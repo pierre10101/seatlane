@@ -1,28 +1,25 @@
-// Package session gives every visitor an anonymous session id and hands it
-// to the bound actions as their `session` input.
+// Package session issues every visitor an anonymous session cookie.
 //
-// bridge-en has no server-set identity input (only the clock, T1), so this
-// is plumbing in front of httpx.Bind, in the spirit of httpx.ClockRule: the
-// id comes from the HttpOnly cookie seatlane_sid (minted here when absent),
-// is written into the JSON body (POST) or the query string (GET) as
-// `session`, and a request that sends `session` itself is refused with 400.
+// It never touches a request: the actions take the session as a server-set
+// input (`server:"session"`, bridge-en grammar T2), which the bridge-en
+// runtime's httpx.Bind reads from the cookie httpx.SessionCookie
+// ("bridge_session"); without a valid cookie the session is 0 and the
+// action answers F8. A body or query string that sends `session` is
+// refused by httpx.Bind with 400. This package only makes sure a browser
+// gets that cookie: Issue sets it on the response when the request has none.
 package session
 
 import (
-	"bytes"
 	"crypto/rand"
 	"encoding/binary"
-	"encoding/json"
-	"io"
 	"net/http"
 	"strconv"
+
+	"github.com/pierre10101/go-ai-bridge/runtime/httpx"
 )
 
-// Cookie is the name of the session cookie.
-const Cookie = "seatlane_sid"
-
-// Field is the input field the actions read the session from.
-const Field = "session"
+// Cookie is the session cookie's name, which the runtime fixes.
+const Cookie = httpx.SessionCookie
 
 // maxID keeps ids exact in JavaScript numbers (2^53 - 1).
 const maxID = 1<<53 - 1
@@ -36,61 +33,31 @@ func Mint() int64 {
 	return int64(binary.BigEndian.Uint64(b[:])%maxID) + 1
 }
 
-// Parse reads a session id; ok is false for anything but 1..2^53-1.
+// Parse reads a session id; ok is false for anything but 1..2^53-1 in digits.
 func Parse(s string) (int64, bool) {
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return 0, false
+		}
+	}
 	n, err := strconv.ParseInt(s, 10, 64)
 	return n, err == nil && n >= 1 && n <= maxID
 }
 
-// Wrap injects the visitor's session into every request to next.
-func Wrap(next http.Handler) http.Handler {
+// Issue sets a freshly minted session cookie on the response when the
+// request carries no valid one. It does not change the request: a request
+// that arrived without a cookie is still answered as having no session (F8
+// from the API); the browser sends the cookie from its next request on.
+func Issue(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id, ok := int64(0), false
-		if c, err := r.Cookie(Cookie); err == nil {
-			id, ok = Parse(c.Value)
-		}
-		if !ok {
-			id = Mint()
+		if c, err := r.Cookie(Cookie); err != nil || !valid(c.Value) {
 			http.SetCookie(w, &http.Cookie{
-				Name: Cookie, Value: strconv.FormatInt(id, 10), Path: "/",
+				Name: Cookie, Value: strconv.FormatInt(Mint(), 10), Path: "/",
 				HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 60 * 60 * 24 * 30,
 			})
-		}
-		switch r.Method {
-		case http.MethodGet, http.MethodHead:
-			q := r.URL.Query()
-			if q.Has(Field) {
-				refuse(w)
-				return
-			}
-			q.Set(Field, strconv.FormatInt(id, 10))
-			r.URL.RawQuery = q.Encode()
-		default:
-			body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
-			if err != nil {
-				refuse(w)
-				return
-			}
-			var obj map[string]json.RawMessage
-			if json.Unmarshal(body, &obj) == nil && obj != nil {
-				if _, sent := obj[Field]; sent {
-					refuse(w)
-					return
-				}
-				obj[Field] = json.RawMessage(strconv.FormatInt(id, 10))
-				body, _ = json.Marshal(obj)
-			}
-			// Anything that is not one JSON object is passed on unchanged:
-			// httpx.Bind answers it with its own 400.
-			r.Body = io.NopCloser(bytes.NewReader(body))
-			r.ContentLength = int64(len(body))
 		}
 		next.ServeHTTP(w, r)
 	})
 }
 
-func refuse(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusBadRequest)
-	_, _ = w.Write([]byte(`{"error":{"id":"bad_request","message":"field \"session\" is set by the server from the session cookie; do not send it"}}` + "\n"))
-}
+func valid(s string) bool { _, ok := Parse(s); return ok }

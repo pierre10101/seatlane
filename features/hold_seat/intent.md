@@ -6,9 +6,9 @@ must never hold the same seat at the same moment, and a hold that is not
 confirmed in time frees the seat for the next person.
 
 ## Who
-Any visitor. The holder is the anonymous session from the `seatlane_sid`
-cookie; the server puts it into the request as `session` (the caller never
-sends it).
+Any visitor. The holder is the anonymous session: the `session` input, which
+the bridge-en runtime sets from the session cookie `bridge_session` (0 without
+a valid cookie); the caller never sends it.
 
 ## Inputs
 - `seat_id` — the seat to hold.

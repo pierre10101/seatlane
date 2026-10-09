@@ -17,7 +17,7 @@ const Route = "POST /api/holds"
 // Input: the seat; session and now are set by the server.
 type Input struct {
 	SeatID  int64 `json:"seat_id"`
-	Session int64 `json:"session"`
+	Session int64 `json:"session" server:"session"`
 	Now     int64 `json:"now" clock:"now"`
 }
 

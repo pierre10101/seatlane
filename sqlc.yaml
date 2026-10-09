@@ -35,3 +35,10 @@ sql:
       go:
         package: "db"
         out: "features/release_hold/db"
+  - engine: "sqlite"
+    schema: "schema.sql"
+    queries: "features/list_my_holds/queries"
+    gen:
+      go:
+        package: "db"
+        out: "features/list_my_holds/db"

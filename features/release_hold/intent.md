@@ -5,12 +5,13 @@ A visitor changes their mind and gives a held seat back at once, instead of
 letting the hold run out.
 
 ## Who
-The visitor whose session holds the seat (cookie `seatlane_sid`, put into the
-request as `session` by the server).
+The visitor whose session holds the seat. The session is the `session` input,
+which the bridge-en runtime sets from the session cookie `bridge_session` (0
+without a valid cookie); the caller never sends it.
 
 ## Inputs
 - `seat_id` — the seat to release.
-- `session` — the visitor's session id (set by the server).
+- `session` — the visitor's session id (set by the server from the cookie).
 - `now` — the current time, set by the server.
 
 ## Outputs

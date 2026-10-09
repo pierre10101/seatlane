@@ -16,7 +16,13 @@ whether a seat is free or a hold has expired.
 - `event`: the event card.
 - `seats`: one page of seats, each with section, row, number, price and the
   flags `available`, `held_by_me`, `held_by_other`, `sold_to_me`,
-  `sold_to_other` (exactly one is true), and `expires_at`.
+  `sold_to_other` (exactly one is true).
+
+The seat map never sends a hold's `expires_at`: not for other visitors'
+holds (that would tell everyone when someone else's hold runs out), and not
+for the viewer's own either, because the slice grammar cannot send a value
+only for some rows. The viewer's own hold times come from List my holds
+(`GET /api/events/{id}/holds`), which only reads seats this session holds.
 - `next_after`: the cursor of the next page, 0 on the last page.
 - `now`: the server's current time, for countdowns.
 

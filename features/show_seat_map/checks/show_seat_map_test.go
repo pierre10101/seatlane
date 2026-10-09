@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,7 +19,6 @@ import (
 	"github.com/pierre10101/seatlane/features/show_seat_map"
 	"github.com/pierre10101/seatlane/features/show_seat_map/db"
 	"github.com/pierre10101/seatlane/internal/domain"
-	"github.com/pierre10101/seatlane/internal/session"
 	"github.com/pierre10101/seatlane/internal/testkit"
 )
 
@@ -68,7 +68,7 @@ func TestSeatStatesForTheViewer(t *testing.T) {
 			t.Errorf("seat %d: states %v want %v", s.SeatID, states(s), want[s.SeatID])
 		}
 	}
-	if out.Seats[0].SeatID != 7 || out.Seats[5].ExpiresAt != t0+1 || out.Seats[0].Price != (domain.Money{Cents: 45000, Currency: "ZAR"}) {
+	if out.Seats[0].SeatID != 7 || out.Seats[0].Price != (domain.Money{Cents: 45000, Currency: "ZAR"}) {
 		t.Fatalf("order or fields: %+v", out.Seats)
 	}
 }
@@ -125,23 +125,48 @@ func TestHTTPSeatMapUsesCookieSession(t *testing.T) {
 	t.Cleanup(func() { httpx.Now = old })
 	mux := http.NewServeMux()
 	mux.Handle(show_seat_map.Route, httpx.Bind(show_seat_map.New(db.New(txn.DB(conn))).Handle))
-	h := session.Wrap(mux)
-	get := func(path string) *httptest.ResponseRecorder {
+	get := func(cookie, path string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
-		req.AddCookie(&http.Cookie{Name: session.Cookie, Value: "1001"})
+		req.AddCookie(&http.Cookie{Name: httpx.SessionCookie, Value: cookie})
 		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, req)
+		mux.ServeHTTP(rec, req)
 		return rec
 	}
-	if rec := get("/api/events/1/seats?session=2002"); rec.Code != http.StatusBadRequest {
-		t.Fatalf("caller-sent session: %d", rec.Code)
+	for _, path := range []string{"/api/events/1/seats?session=2002", "/api/events/1/seats?now=1"} {
+		if rec := get("1001", path); rec.Code != http.StatusBadRequest {
+			t.Fatalf("caller-sent %s: %d", path, rec.Code)
+		}
 	}
-	rec := get("/api/events/1/seats")
+	rec := get("1001", "/api/events/1/seats")
 	var out show_seat_map.Output
-	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &out) != nil || len(out.Seats) != 2 {
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &out) != nil || len(out.Seats) != 2 || out.Now != t0+10 {
 		t.Fatalf("%d %s", rec.Code, rec.Body)
 	}
-	if !out.Seats[1].HeldByMe || out.Seats[1].ExpiresAt-out.Now != 590 {
+	if !out.Seats[1].HeldByMe {
 		t.Fatalf("seat 1 %+v now %d", out.Seats[1], out.Now)
+	}
+	// Item 8: no hold expiry in the seat map, for anyone (Bob sees Alice's
+	// hold as held by someone else, and nothing about when it ends).
+	for cookie, mine := range map[string]bool{"1001": true, "2002": false} {
+		rec := get(cookie, "/api/events/1/seats")
+		if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "expires_at") || strings.Contains(rec.Body.String(), "held_at") {
+			t.Fatalf("session %s: %d %s", cookie, rec.Code, rec.Body)
+		}
+		var o show_seat_map.Output
+		if json.Unmarshal(rec.Body.Bytes(), &o) != nil || o.Seats[1].HeldByMe != mine || o.Seats[1].HeldByOther == mine {
+			t.Fatalf("session %s: %+v", cookie, o.Seats[1])
+		}
+	}
+}
+
+// F8 over HTTP: without a valid cookie the session is 0.
+func TestF8_HTTPWithoutCookie(t *testing.T) {
+	_, conn := newAction(t, 1)
+	mux := http.NewServeMux()
+	mux.Handle(show_seat_map.Route, httpx.Bind(show_seat_map.New(db.New(txn.DB(conn))).Handle))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/events/1/seats", nil))
+	if rec.Code != show_seat_map.F8.Status || !strings.Contains(rec.Body.String(), `"`+show_seat_map.F8.ID+`"`) {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
 	}
 }

@@ -21,7 +21,7 @@ type Input struct {
 	EventID int64 `json:"event_id" path:"id"`
 	After   int64 `json:"after" query:"after"`
 	Limit   int64 `json:"limit" query:"limit"`
-	Session int64 `json:"session" query:"session"`
+	Session int64 `json:"session" server:"session"`
 	Now     int64 `json:"now" clock:"now"`
 }
 
@@ -94,7 +94,6 @@ func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
 			HeldByOther: domain.IsHeldByOther(row.HeldBy, row.ExpiresAt, row.SoldTo, in.Session, in.Now),
 			SoldToMe:    domain.IsSoldTo(row.SoldTo, in.Session),
 			SoldToOther: domain.IsSoldToOther(row.SoldTo, in.Session),
-			ExpiresAt:   row.ExpiresAt,
 		}
 	}
 

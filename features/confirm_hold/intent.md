@@ -5,12 +5,13 @@ A visitor who holds a seat confirms it before the hold expires; the seat is
 then sold to them and nobody else can hold it.
 
 ## Who
-The visitor whose anonymous session (cookie `seatlane_sid`, put into the
-request as `session` by the server) holds the seat.
+The visitor whose anonymous session holds the seat. The session is the
+`session` input, which the bridge-en runtime sets from the session cookie
+`bridge_session` (0 without a valid cookie); the caller never sends it.
 
 ## Inputs
 - `seat_id` — the seat to confirm.
-- `session` — the visitor's session id (set by the server).
+- `session` — the visitor's session id (set by the server from the cookie).
 - `now` — the current time, set by the server.
 
 ## Outputs

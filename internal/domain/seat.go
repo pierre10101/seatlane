@@ -1,7 +1,9 @@
 package domain
 
 // SeatView is one seat on the seat map, with its state for the viewing
-// session. Exactly one of the five state flags is true.
+// session. Exactly one of the five state flags is true. It has no hold
+// expiry: the seat map never tells anyone when a hold runs out; a visitor's
+// own hold times come from MyHold (list_my_holds).
 //
 // bridge-en: a seat on the map
 type SeatView struct {
@@ -16,7 +18,23 @@ type SeatView struct {
 	HeldByOther bool   `json:"held_by_other"`
 	SoldToMe    bool   `json:"sold_to_me"`
 	SoldToOther bool   `json:"sold_to_other"`
-	ExpiresAt   int64  `json:"expires_at"`
+}
+
+// MyHold is one seat the viewing session holds, with when its hold ends.
+// Active is false once expires_at is no later than now (the seat is then
+// free for anyone, until this session holds it again).
+//
+// bridge-en: a session hold
+type MyHold struct {
+	SeatID    int64 `json:"seat_id"`
+	HeldAt    int64 `json:"held_at"`
+	ExpiresAt int64 `json:"expires_at"`
+	Active    bool  `json:"active"`
+}
+
+// IsActiveHold: a hold is active while it ends later than now.
+func IsActiveHold(expiresAt, now int64) bool {
+	return expiresAt > now
 }
 
 // IsAvailable: not sold, and nobody holds it or the hold has expired.
