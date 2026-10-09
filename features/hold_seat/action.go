@@ -8,17 +8,22 @@ import (
 
 	"github.com/pierre10101/go-ai-bridge/runtime/assert"
 	"github.com/pierre10101/go-ai-bridge/runtime/failure"
+	"github.com/pierre10101/go-ai-bridge/runtime/httpx"
 	"github.com/pierre10101/seatlane/features/hold_seat/db"
 )
 
 // Route is the HTTP contract.
 const Route = "POST /api/holds"
 
-// Input: the seat; session and now are set by the server.
+// Roles: only a signed-in customer may call it (401 if not signed in, 403
+// for another role), checked by httpx.Bind before Handle runs.
+var Roles = httpx.Roles("customer")
+
+// Input: the seat; the signed-in user and now are set by the server.
 type Input struct {
-	SeatID  int64  `json:"seat_id"`
-	Session string `json:"session" server:"session"`
-	Now     int64  `json:"now" clock:"now"`
+	SeatID int64 `json:"seat_id"`
+	User   int64 `json:"user" server:"user"`
+	Now    int64 `json:"now" clock:"now"`
 }
 
 // Output: the hold that was taken, and the server's clock for the countdown.
@@ -34,10 +39,9 @@ var (
 	F1 = failure.New("F1", http.StatusConflict, "seat is already held")
 	F6 = failure.New("F6", http.StatusConflict, "seat is already sold")
 	F7 = failure.New("F7", http.StatusNotFound, "seat does not exist")
-	F8 = failure.New("F8", http.StatusUnauthorized, "session is required")
 )
 
-// Action holds one seat for one session.
+// Action holds one seat for one signed-in customer.
 type Action struct {
 	q *db.Queries
 }
@@ -48,11 +52,7 @@ func New(q *db.Queries) *Action { return &Action{q: q} }
 // Handle claims the seat with one conditional UPDATE, then explains a claim
 // that changed nothing with reads made after it.
 func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
-	if in.Session == "" {
-		return Output{}, F8
-	}
-
-	claimed, err := a.q.HoldSeat(ctx, db.HoldSeatParams{Session: in.Session, Now: in.Now, SeatID: in.SeatID})
+	claimed, err := a.q.HoldSeat(ctx, db.HoldSeatParams{User: in.User, Now: in.Now, SeatID: in.SeatID})
 	if err != nil {
 		return Output{}, err
 	}
@@ -69,7 +69,7 @@ func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	if claimed == 0 && seat.SoldTo != "" {
+	if claimed == 0 && seat.SoldTo != 0 {
 		return Output{}, F6
 	}
 	if claimed != 1 {
@@ -77,7 +77,7 @@ func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
 	}
 
 	out := Output{SeatID: in.SeatID, HeldAt: seat.HeldAt, ExpiresAt: seat.ExpiresAt, Now: in.Now}
-	assert.Post(seat.HeldBy == in.Session, "the hold belongs to the requester")
+	assert.Post(seat.HeldBy == in.User, "the hold belongs to the requester")
 	assert.Post(out.HeldAt == in.Now, "the hold was taken now")
 	assert.Post(out.ExpiresAt > out.Now, "a new hold has not expired")
 	return out, nil

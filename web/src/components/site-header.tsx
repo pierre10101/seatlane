@@ -1,5 +1,9 @@
-import { Link } from 'react-router-dom'
-import { Armchair, Moon, Sun } from 'lucide-react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Armchair, LogIn, LogOut, Moon, Sun } from 'lucide-react'
+import { toast } from 'sonner'
+import { api } from '@/lib/api'
+import { errorCopy } from '@/lib/errors'
+import { useAuth } from '@/hooks/use-auth'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -8,6 +12,21 @@ import { useTheme } from '@/hooks/use-theme'
 export function SiteHeader() {
   const { theme, toggle } = useTheme()
   const next = theme === 'dark' ? 'light' : 'dark'
+  const { account, ready, setAccount } = useAuth()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const here = location.pathname.startsWith('/sign-') ? '' : `?next=${encodeURIComponent(location.pathname)}`
+  async function signOut() {
+    try {
+      await api.signOut()
+      setAccount(null)
+      toast('Signed out')
+      navigate('/')
+    } catch (e) {
+      const c = errorCopy(e)
+      toast.error(c.title, { description: c.description })
+    }
+  }
   return (
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/70 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6">
@@ -17,6 +36,21 @@ export function SiteHeader() {
           </span>
           <span className="text-[15px] font-semibold tracking-tight">Seatlane</span>
         </Link>
+        <div className="flex items-center gap-1.5">
+        {ready && account && (
+          <>
+            <span className="hidden max-w-48 truncate text-sm text-muted-foreground sm:inline" data-testid="signed-in-as">
+              {account.email}{account.role !== 'customer' && ` · ${account.role}`}
+            </span>
+            <Button variant="ghost" size="sm" onClick={signOut} data-testid="sign-out"><LogOut /> Sign out</Button>
+          </>
+        )}
+        {ready && !account && (
+          <>
+            <Button asChild variant="ghost" size="sm"><Link to={`/sign-in${here}`} data-testid="sign-in"><LogIn /> Sign in</Link></Button>
+            <Button asChild variant="outline" size="sm"><Link to={`/sign-up${here}`} data-testid="sign-up">Sign up</Link></Button>
+          </>
+        )}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="ghost" size="icon" onClick={toggle} aria-label={`Switch to ${next} mode`} data-testid="theme-toggle">
@@ -36,6 +70,7 @@ export function SiteHeader() {
           </TooltipTrigger>
           <TooltipContent>Switch to {next} mode</TooltipContent>
         </Tooltip>
+        </div>
       </div>
     </header>
   )

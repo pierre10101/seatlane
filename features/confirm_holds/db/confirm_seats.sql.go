@@ -13,23 +13,23 @@ import (
 const confirmSeats = `-- name: ConfirmSeats :execrows
 UPDATE seats
 SET sold_to = ?1, sold_at = ?2
-WHERE held_by = ?1 AND sold_to = '' AND expires_at > ?2 AND id IN (/*SLICE:seat_ids*/?)
+WHERE held_by = ?1 AND sold_to = 0 AND expires_at > ?2 AND id IN (/*SLICE:seat_ids*/?)
 `
 
 type ConfirmSeatsParams struct {
-	Session string
+	User    int64
 	Now     int64
 	SeatIds []int64
 }
 
 // One statement sells every listed seat only if, at that moment, it is not
-// sold, this session holds it and the hold has not expired (Q6). The IN list
+// sold, this user holds it and the hold has not expired (Q6). The IN list
 // is on the table's key and comes last (Q7), so the action can check that one
 // row changed per listed seat (S11): all seats or none.
 func (q *Queries) ConfirmSeats(ctx context.Context, arg ConfirmSeatsParams) (int64, error) {
 	query := confirmSeats
 	var queryParams []interface{}
-	queryParams = append(queryParams, arg.Session)
+	queryParams = append(queryParams, arg.User)
 	queryParams = append(queryParams, arg.Now)
 	if len(arg.SeatIds) > 0 {
 		for _, v := range arg.SeatIds {

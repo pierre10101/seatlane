@@ -1,5 +1,5 @@
 // Package confirm_holds is the Confirm holds slice: every listed seat is sold
-// to the session that holds it, or none is. The why lives in intent.md; the
+// to the user who holds it, or none is. The why lives in intent.md; the
 // English review rendering lives in confirm_holds.en (generated, golden).
 package confirm_holds
 
@@ -9,16 +9,21 @@ import (
 
 	"github.com/pierre10101/go-ai-bridge/runtime/assert"
 	"github.com/pierre10101/go-ai-bridge/runtime/failure"
+	"github.com/pierre10101/go-ai-bridge/runtime/httpx"
 	"github.com/pierre10101/seatlane/features/confirm_holds/db"
 )
 
 // Route is the HTTP contract.
 const Route = "POST /api/holds/confirm-all"
 
-// Input: the seats on the review screen; session and now are set by the server.
+// Roles: only a signed-in customer may call it (401 if not signed in, 403
+// for another role), checked by httpx.Bind before Handle runs.
+var Roles = httpx.Roles("customer")
+
+// Input: the seats on the review screen; the signed-in user and now are set by the server.
 type Input struct {
 	SeatIDs []int64 `json:"seat_ids" list:"1..20"`
-	Session string  `json:"session" server:"session"`
+	User    int64   `json:"user" server:"user"`
 	Now     int64   `json:"now" clock:"now"`
 }
 
@@ -32,11 +37,10 @@ type Output struct {
 // Failure cases. IDs match intent.md, docs/failures.md and checks/.
 var (
 	F2  = failure.New("F2", http.StatusGone, "hold has expired")
-	F8  = failure.New("F8", http.StatusUnauthorized, "session is required")
-	F13 = failure.New("F13", http.StatusConflict, "a seat in the list is not held by this session")
+	F13 = failure.New("F13", http.StatusConflict, "a seat in the list is not held by you")
 )
 
-// Action sells every listed seat to the session that holds it, or none.
+// Action sells every listed seat to the user who holds it, or none.
 type Action struct {
 	q *db.Queries
 }
@@ -48,16 +52,12 @@ func New(q *db.Queries) *Action { return &Action{q: q} }
 // expired hold with a read made after it, and rolls everything back unless
 // one row changed per listed seat.
 func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
-	if in.Session == "" {
-		return Output{}, F8
-	}
-
-	confirmed, err := a.q.ConfirmSeats(ctx, db.ConfirmSeatsParams{Session: in.Session, Now: in.Now, SeatIds: in.SeatIDs})
+	confirmed, err := a.q.ConfirmSeats(ctx, db.ConfirmSeatsParams{User: in.User, Now: in.Now, SeatIds: in.SeatIDs})
 	if err != nil {
 		return Output{}, err
 	}
 
-	expired, err := a.q.CountExpiredHolds(ctx, db.CountExpiredHoldsParams{Session: in.Session, Now: in.Now, SeatIds: in.SeatIDs})
+	expired, err := a.q.CountExpiredHolds(ctx, db.CountExpiredHoldsParams{User: in.User, Now: in.Now, SeatIds: in.SeatIDs})
 	if err != nil {
 		return Output{}, err
 	}
@@ -68,12 +68,12 @@ func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
 		return Output{}, F13
 	}
 
-	sold, err := a.q.CountSoldNow(ctx, db.CountSoldNowParams{Session: in.Session, Now: in.Now, SeatIds: in.SeatIDs})
+	sold, err := a.q.CountSoldNow(ctx, db.CountSoldNowParams{User: in.User, Now: in.Now, SeatIds: in.SeatIDs})
 	if err != nil {
 		return Output{}, err
 	}
 
 	out := Output{Confirmed: confirmed, SoldAt: in.Now, Now: in.Now}
-	assert.Post(sold == confirmed, "every seat changed is sold to this session now")
+	assert.Post(sold == confirmed, "every seat changed is sold to this user now")
 	return out, nil
 }

@@ -74,9 +74,9 @@ type ListEventSeatsRow struct {
 	RowLabel    string
 	SeatNumber  int64
 	PriceCents  int64
-	HeldBy      string
+	HeldBy      int64
 	ExpiresAt   int64
-	SoldTo      string
+	SoldTo      int64
 }
 
 func (q *Queries) ListEventSeats(ctx context.Context, arg ListEventSeatsParams) ([]ListEventSeatsRow, error) {

@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/pierre10101/seatlane/internal/session"
 )
 
 func dist(t *testing.T) string {
@@ -25,30 +23,32 @@ func dist(t *testing.T) string {
 }
 
 // Every response that serves the HTML (/, /index.html, the SPA fallback)
-// sets exactly one session cookie and keeps a valid one; static files don't.
-func TestHTMLAlwaysCarriesTheSessionCookie(t *testing.T) {
-	h := Handler(dist(t))
-	for _, p := range []string{"/", "/index.html", "/events/2", "/events/2/"} {
+// runs the page hook once; static files don't.
+func TestHTMLRunsThePageHook(t *testing.T) {
+	calls := 0
+	h := Handler(dist(t), func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		http.SetCookie(w, &http.Cookie{Name: "page", Value: "1"})
+	})
+	for _, p := range []string{"/", "/index.html", "/events/2", "/events/2/", "/sign-in"} {
+		before := calls
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, p, nil))
-		cs := rec.Result().Cookies()
-		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<title>Seatlane") || len(cs) != 1 ||
-			cs[0].Name != session.Cookie || !session.Valid(cs[0].Value) || !cs[0].HttpOnly || cs[0].SameSite != http.SameSiteLaxMode || cs[0].Path != "/" {
-			t.Fatalf("%s: %d %v %q", p, rec.Code, cs, rec.Body)
-		}
-		req := httptest.NewRequest(http.MethodGet, p, nil)
-		req.AddCookie(cs[0])
-		rec = httptest.NewRecorder()
-		h.ServeHTTP(rec, req)
-		if again := rec.Result().Cookies(); len(again) != 1 || again[0].Value != cs[0].Value {
-			t.Fatalf("%s: a valid session was replaced: %v", p, again)
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<title>Seatlane") || calls != before+1 || len(rec.Result().Cookies()) != 1 {
+			t.Fatalf("%s: %d calls %d %q", p, rec.Code, calls-before, rec.Body)
 		}
 	}
 	for _, p := range []string{"/assets/app.js", "/favicon.svg"} {
+		before := calls
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, p, nil))
-		if rec.Code != http.StatusOK || len(rec.Result().Cookies()) != 0 {
+		if rec.Code != http.StatusOK || calls != before || len(rec.Result().Cookies()) != 0 {
 			t.Fatalf("%s: %d %v", p, rec.Code, rec.Result().Cookies())
 		}
+	}
+	rec := httptest.NewRecorder()
+	Handler(dist(t), nil).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("nil hook: %d", rec.Code)
 	}
 }

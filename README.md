@@ -29,7 +29,7 @@ server says.
 ## How it works
 
 - **One slice per action** under `features/`: `list_events`, `show_seat_map`,
-  `list_my_holds`, `hold_seat`, `confirm_hold`, `confirm_holds`, `release_hold`. Each has an
+  `list_my_holds`, `hold_seat`, `confirm_hold`, `confirm_holds`, `release_hold`, `me`. Each has an
   `intent.md` (why, inputs, outputs, failure cases written first), plain SQL in
   `queries/`, sqlc code in `db/`, the action in `action.go`, one check per
   failure ID in `checks/`, and its English in `<slice>.en`.
@@ -43,17 +43,46 @@ server says.
   conditional `UPDATE ... AND id IN (sqlc.slice(seat_ids))`; unless it changed
   exactly one row per listed seat, the transaction rolls back and no seat is
   sold (F2 if one of the holds has expired, F13 if a seat is not held by you).
-- **The server owns time and identity.** `now` (`clock:"now"`) and `session`
-  (`server:"session"`) are set by the bridge-en runtime from the server clock
-  and the `bridge_session` cookie; a request that sends either is a 400. A
-  hold is active while `expires_at` is later than now: a hold taken exactly
-  600 seconds ago has expired, one taken 599 seconds ago has not.
-- **Anonymous sessions.** The session is 128 random bits from `crypto/rand`,
-  written as 26 base32 characters. The server sets the cookie on every
-  response that serves the web app's HTML, and on any API call without a valid
-  one as a fallback (`internal/session`); it is `HttpOnly`, `SameSite=Lax`,
-  `Path=/`, and `Secure` over TLS. `held_by` and `sold_to` store it as TEXT,
-  with `''` meaning nobody.
+- **The server owns time and identity.** `now` (`clock:"now"`), `user`
+  (`server:"user"`) and `role` (`server:"role"`) are set by the bridge-en
+  runtime from the server clock and the signed-in session; a request that
+  sends any of them is a 400. A hold is active while `expires_at` is later
+  than now: a hold taken exactly 600 seconds ago has expired, one taken 599
+  seconds ago has not.
+- **Roles, deny by default.** The app's roles are declared once in
+  `cmd/server/routes.go` (`httpx.AppRoles("customer", "organizer", "admin")`)
+  and every slice declares `var Roles`: `list_events` and `show_seat_map` are
+  `httpx.Public`; holding, confirming, releasing and listing your holds are
+  `httpx.Roles("customer")`; `me` is for every role. `httpx.Bind` answers 401
+  (`unauthorized`) when nobody is signed in and 403 (`forbidden`) for another
+  role, before the action reads anything. Organizers and admins exist as
+  roles, but no slice grants them more yet; ownership rules wait for
+  bridge-en rule A4.
+- **Accounts and sessions** (`internal/auth`, app code: see
+  [docs/bridge-en-gaps.md](docs/bridge-en-gaps.md) for why these are not
+  slices). Sign-up stores a bcrypt hash (cost 12) of a 10-72 byte password;
+  the email is trimmed and lower-cased, and a duplicate is F16 even under
+  concurrent sign-ups (`INSERT ... ON CONFLICT DO NOTHING`). Sign-in answers
+  F17 for an unknown email and for a wrong password alike (an unknown email is
+  checked against a dummy hash, so it takes as long). A session is 32 random
+  bytes in the `seatlane_auth` cookie (`HttpOnly`, `SameSite=Lax`, `Path=/`,
+  `Secure` over TLS, 7 days); the database stores only its SHA-256.
+  `httpx.Identify(AppRoles, identity, mux)` turns it into the user id and
+  role through the `httpx.Identity` hook. `held_by` and `sold_to` store the
+  user id, with `0` meaning nobody.
+- **CSRF.** Every `POST`/`PUT`/`PATCH`/`DELETE` under `/api/` must send
+  `X-CSRF-Token` equal to the `seatlane_csrf` cookie (double submit). The
+  token is `nonce.HMAC-SHA256(key, nonce | sha256(session))`, so it is only
+  valid with the sign-in session it was issued for, and a cross-site `Origin`
+  or `Sec-Fetch-Site` is refused too. Anything else is F19 (403), with a
+  fresh cookie so the web app can retry once. The key comes from
+  `SEATLANE_CSRF_KEY` (64 hex characters) or is random per process.
+- **Sign-in rate limit.** At most 5 failed sign-ins per client IP + email in
+  15 minutes; the next attempt is F18 (429, `Retry-After`) without checking
+  the password. The rule is a pure function, `auth.Reserve(stored, now)`, and
+  `now` is passed in (`httpx.Now()`, which the dev clock replaces). Each
+  attempt is counted inside the same transaction that reads the counter, before the
+  password is checked, so parallel guesses cannot get past the limit.
 - **Errors carry a stable ID.** Every failure is
   `{"error": {"id": "F1", "message": "..."}}`; the catalogue is in
   [docs/failures.md](docs/failures.md). The UI maps `error.id` to friendly
@@ -98,13 +127,18 @@ Each slice's review copy sits next to its code:
 features/hold_seat/hold_seat.en          features/confirm_hold/confirm_hold.en
 features/release_hold/release_hold.en    features/show_seat_map/show_seat_map.en
 features/list_my_holds/list_my_holds.en  features/list_events/list_events.en
-features/confirm_holds/confirm_holds.en
+features/confirm_holds/confirm_holds.en  features/me/me.en
 ```
+
+Sign-up, sign-in and sign-out have no `.en`: they are not bridge-en slices.
+Their intent is in `internal/auth/{sign_up,sign_in,sign_out,csrf}/intent.md`,
+and `internal/auth/intent_test.go` cross-checks those F-IDs against the code
+and the checks.
 
 They are generated (`bridge-en -write`), never edited by hand, and checked in
 CI (`bridge-en -check features/*/`): the check fails if the code and its
 English drift apart, if a slice uses a construct outside the
-[rulebook](https://github.com/pierre10101/go-ai-bridge/blob/v0.2.0/RULEBOOK.md),
+[rulebook](https://github.com/pierre10101/go-ai-bridge/blob/v0.3.0/RULEBOOK.md),
 or if the failure IDs in `intent.md`, `action.go` and `checks/` differ. Each
 `intent.md` lists its failure cases under exactly one `## Failure cases`
 heading, one `- F<n>: <text>` line each. Read a `.en` diff in a pull request
@@ -139,30 +173,48 @@ curl -X POST 'http://localhost:8080/__dev/advance?seconds=600'
 ```
 
 After changing `schema.sql` or a query, run `make generate` (sqlc + the
-`.en` files) and review the diff. An existing local database from before the
-TEXT session columns must be deleted (`rm seatlane.db`); the server seeds a
-fresh one.
+`.en` files) and review the diff. A local database from before phase 1 (with
+TEXT session columns and no `users` table) must be deleted (`rm seatlane.db`);
+the server seeds a fresh one.
+
+Everyone who signs up is a `customer`. To make an organizer or admin, change
+the role by hand:
+
+```sh
+sqlite3 seatlane.db "UPDATE users SET role = 'organizer' WHERE email = 'olga@example.com';"
+```
+
+Set `SEATLANE_CSRF_KEY` (64 hex characters, e.g. `openssl rand -hex 32`) to
+keep CSRF tokens valid across restarts. Without it, each start picks a random
+key, and the web app gets a new token when it next retries.
 
 ## API
 
-| Route | Slice | Failure IDs |
-|---|---|---|
-| `GET /api/events` | list_events | F11, F12 |
-| `GET /api/events/{id}/seats` | show_seat_map | F8, F10, F11, F12 |
-| `GET /api/events/{id}/holds` | list_my_holds | F8, F11, F12 |
-| `POST /api/holds` `{"seat_id"}` | hold_seat | F1, F6, F7, F8 |
-| `POST /api/holds/confirm` `{"seat_id"}` | confirm_hold | F2, F3, F4, F5, F6, F7, F8 |
-| `POST /api/holds/confirm-all` `{"seat_ids"}` | confirm_holds | F2, F8, F13 |
-| `POST /api/holds/release` `{"seat_id"}` | release_hold | F5, F6, F7, F8, F9 |
+| Route | Handler | Who | Failure IDs |
+|---|---|---|---|
+| `GET /api/events` | list_events | everyone | F11, F12 |
+| `GET /api/events/{id}/seats` | show_seat_map | everyone | F10, F11, F12 |
+| `GET /api/events/{id}/holds` | list_my_holds | customer | F11, F12 |
+| `POST /api/holds` `{"seat_id"}` | hold_seat | customer | F1, F6, F7 |
+| `POST /api/holds/confirm` `{"seat_id"}` | confirm_hold | customer | F2, F3, F4, F5, F6, F7 |
+| `POST /api/holds/confirm-all` `{"seat_ids"}` | confirm_holds | customer | F2, F13 |
+| `POST /api/holds/release` `{"seat_id"}` | release_hold | customer | F5, F6, F7, F9 |
+| `GET /api/me` | me | customer, organizer, admin | |
+| `POST /api/sign-up` `{"email","password"}` | internal/auth | everyone | F14, F15, F16 |
+| `POST /api/sign-in` `{"email","password"}` | internal/auth | everyone | F17, F18 |
+| `POST /api/sign-out` | internal/auth | everyone | |
+
+Any route that is not for everyone can also answer 401 `unauthorized` or 403
+`forbidden`, and every `POST` can answer F19 (CSRF).
 
 ## Layout
 
 ```
-cmd/server/        main (store.Open, seed, -dev-clock) and routes.go (one httpx.Bind line per slice)
+cmd/server/        main (store.Open, seed, -dev-clock, CSRF) and routes.go (AppRoles, one httpx.Bind per slice, httpx.Identify)
 features/<slice>/  intent.md, action.go, queries/, db/, checks/, <slice>.en
 internal/domain/   value objects and pure seat rules (rendered into the English)
-internal/session/  issues the bridge_session cookie
-internal/web/      serves web/dist with the SPA fallback (and the cookie)
+internal/auth/     accounts, bcrypt, sessions, the identity hook, CSRF, sign-in rate limit (app code + intent.md)
+internal/web/      serves web/dist with the SPA fallback (and the CSRF cookie)
 web/               the React app
 docs/              failures.md, screenshots/
 ```

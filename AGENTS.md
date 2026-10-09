@@ -1,13 +1,13 @@
 # AGENTS.md: how to change this app
 
 This file is for any AI coding agent (and any person) working in this
-repository. It was written by `bridge-en init` (bridge-en 0.2.0).
+repository. It was written by `bridge-en init` (bridge-en 0.3.0).
 
 The features of this app are written in a narrow Go + sqlc grammar. The tool
 `bridge-en` translates each feature, deterministically and without AI, into
 English (`<slice>.en`) that a person reviews. Code outside the grammar is
 refused. The rules are in `RULEBOOK.md` of the pinned version
-(https://github.com/pierre10101/go-ai-bridge/blob/v0.2.0/RULEBOOK.md),
+(https://github.com/pierre10101/go-ai-bridge/blob/v0.3.0/RULEBOOK.md),
 and `bridge-en -grammar` prints them, one line per rule ID.
 
 ## 1. Install the pinned version
@@ -15,10 +15,10 @@ and `bridge-en -grammar` prints them, one line per rule ID.
 `go.mod` is the pin. Use the version it requires; never a different one.
 
 ```sh
-go get github.com/pierre10101/go-ai-bridge@v0.2.0          # once, in a new app
+go get github.com/pierre10101/go-ai-bridge@v0.3.0          # once, in a new app
 go list -m github.com/pierre10101/go-ai-bridge                    # the pinned version
-go install github.com/pierre10101/go-ai-bridge/cmd/bridge-en@v0.2.0   # the same version
-bridge-en -version                                                # bridge-en 0.2.0
+go install github.com/pierre10101/go-ai-bridge/cmd/bridge-en@v0.3.0   # the same version
+bridge-en -version                                                # bridge-en 0.3.0
 ```
 
 Import the runtime (`github.com/pierre10101/go-ai-bridge/runtime/...`). Never
@@ -37,14 +37,23 @@ copy bridge-en code into the app.
    ```
 2. `features/<slice>/queries/*.sql` in the SQL shapes (Q0-Q7), then
    `sqlc generate`.
-3. `features/<slice>/action.go` in the grammar (D1-D10, S1-S11, E1-E7). The F-IDs
-   it declares are exactly those of intent.md.
+3. `features/<slice>/action.go` in the grammar (D1-D10, S1-S11, E1-E7, T1-T3,
+   A1-A3). The F-IDs it declares are exactly those of intent.md. It declares
+   who may call it (A1, required): `var Roles = httpx.Roles("organizer",
+   "admin")` for signed-in users with one of those roles (each role one of the
+   app's, declared once in `cmd/server` with `httpx.AppRoles`), or
+   `var Roles = httpx.Public` for anyone, signed in or not. There is no
+   default: `-check` refuses an action without it.
 4. `features/<slice>/checks/*_test.go`: one `func TestF<n>_...` per F-ID that
    references `<slice>.F<n>` and runs the action against real SQLite
    (`store.Open(ctx, ":memory:", schema)`), proving the failure fires and
    writes nothing. Test both sides of every time boundary.
-5. One line in `cmd/server/routes.go`:
-   `mux.Handle(<slice>.Route, httpx.Bind(<slice>.New(db.New(txn.DB(conn))).Handle))`.
+5. One line in `cmd/server/routes.go`, passing the slice's own Roles:
+   `mux.Handle(<slice>.Route, httpx.Bind(<slice>.Roles, <slice>.New(db.New(txn.DB(conn))).Handle))`.
+   `Routes` returns `httpx.Identify(AppRoles, identity, mux)`, where
+   `identity` is the app's sign-in hook. Sign-in, password hashing and
+   sessions are the app's own code (outside `features/`); the hook only
+   tells the runtime who is signed in and with which role.
 
 ## 3. Check after every edit
 
@@ -64,10 +73,16 @@ bridge-en -write features/<slice>/     # save the English when -check only says 
 
 - **Server state is passed in, never read.** The current time is an Input
   field ``Now int64 `json:"now" clock:"now"` ``; the caller's session is
-  ``Session string `json:"session" server:"session"` `` (or int64). Who the
-  caller is comes only from that session, never from the request body (no
-  `person_id` or `user_id` input). Never call `time.Now()` or read a cookie
-  in a feature.
+  ``Session string `json:"session" server:"session"` `` (or int64); the
+  signed-in user is ``User int64 `json:"user" server:"user"` `` (or string)
+  and their role ``Role string `json:"role" server:"role"` ``. Who the caller
+  is comes only from these, never from the request body (no `person_id`,
+  `user_id` or `role` input: a request that sends `user` or `role` gets
+  HTTP 400). Never call `time.Now()` or read a cookie in a feature.
+- **Every action declares who may call it.** `var Roles =
+  httpx.Roles("<role>", ...)` or `var Roles = httpx.Public`; the runtime
+  answers 401 (not signed in) or 403 (role not listed) before the action
+  runs. Never check a role inside `Handle` instead.
 - **Claims are one conditional UPDATE.** Check and write in one statement
   (`UPDATE ... WHERE id = ? AND <condition>`, `:execrows`), then stop unless
   exactly one row changed: `if n != 1 { return Output{}, F<n> }`. For a list,
@@ -134,9 +149,13 @@ import (
 	"example.com/app/features/hold_seat/db"
 	"github.com/pierre10101/go-ai-bridge/runtime/assert"
 	"github.com/pierre10101/go-ai-bridge/runtime/failure"
+	"github.com/pierre10101/go-ai-bridge/runtime/httpx"
 )
 
 const Route = "POST /holds"
+
+// Anyone may hold a seat, signed in or not: the holder is the session.
+var Roles = httpx.Public
 
 type Input struct {
 	SeatID  int64  `json:"seat_id"`
@@ -177,6 +196,18 @@ func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
 }
 ```
 
+An action only some users may call declares their roles and takes the
+signed-in user from the server, for example:
+
+```go
+var Roles = httpx.Roles("organizer", "admin")
+
+type Input struct {
+	Title string `json:"title"`
+	User  int64  `json:"user" server:"user"` // the signed-in user, never from the body
+}
+```
+
 The schema behind it: `seats (id INTEGER PRIMARY KEY, held_by TEXT NOT NULL
 DEFAULT '', expires_at INTEGER NOT NULL DEFAULT 0)`; `held_by` is the
 session holding the seat ('' when free) until `expires_at` (unix seconds).
@@ -196,14 +227,32 @@ Seatlane-specific notes, added by hand on top of the `bridge-en init` text
   `example.com/app/...` as `github.com/pierre10101/seatlane/...`.
 - F-IDs are app-wide, not numbered per slice. [docs/failures.md](docs/failures.md)
   is the catalogue: reuse an existing F-ID with the same status and message
-  (F8 is always "session is required", F11 and F12 always the paging
-  limits); a new failure takes the next free number there (F14, ...) and is
-  added to that table, to the API table in README.md and to the web app's
-  `error.id` copy. A slice's `## Failure cases` lists only the IDs it raises,
-  in increasing order (for example `F2`, `F8`, `F13`).
+  (F11 and F12 are always the paging limits). A new failure takes the next
+  free number there (F20, ...) and is added to that table, to the API table in
+  README.md and to the web app's `error.id` copy (`web/src/lib/errors.ts`).
+  F8 ("session is required") is retired and never reused. A slice's
+  `## Failure cases` lists only the IDs it raises, in increasing order (for
+  example `F2`, `F13`).
+- Roles: `AppRoles` (customer, organizer, admin) is declared once in
+  `cmd/server/routes.go`; every slice declares `var Roles` (deny by
+  default) and takes the caller only as `User int64 server:"user"` (and
+  `Role string server:"role"`); `held_by`/`sold_to` hold the user id, 0 =
+  nobody. Do not add organizer ownership rules until bridge-en has rule A4.
+  `internal/testkit` has the shared users (Alice, Bob: customers; Olga:
+  organizer; Ada: admin) and `testkit.Do` to call a handler as any user and
+  role; every non-Public slice has an HTTP check for 401, 403 and the allowed role.
+- Accounts are app code in `internal/auth` (bcrypt, sessions, the
+  `httpx.Identity` hook, CSRF, the sign-in rate limit), because bridge-en
+  slices cannot hash passwords, set cookies or read the client IP (see
+  docs/bridge-en-gaps.md G4-G11). Its flows (`sign_up`, `sign_in`,
+  `sign_out`, `csrf`) still write `intent.md` first, with F14-F19, and
+  `internal/auth/intent_test.go` cross-checks those IDs with the `Failures` map and the checks.
+  Logic there takes the current time as an argument (`Reserve(prev, now)`);
+  only the handlers read `httpx.Now()`.
 - Every slice under `features/` has a route line in `cmd/server/routes.go`
-  and a `sqlc.yaml` entry.
+  (`httpx.Bind(<slice>.Roles, ...)`) and a `sqlc.yaml` entry.
 - `make check` (bridge-en -check), `make test` (go vet + go test),
   `make generate` (sqlc + every `.en`), `make tools` (the pinned bridge-en).
-  The React app in `web/` (`npm run build`) draws only the server's flags and
-  counts down from the server's `expires_at - now`.
+  The React app in `web/` (`npm run build`) draws only the server's flags,
+  counts down from the server's `expires_at - now`, and sends the
+  `seatlane_csrf` cookie back as `X-CSRF-Token` on every POST.

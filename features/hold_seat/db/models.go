@@ -4,6 +4,13 @@
 
 package db
 
+type AuthSession struct {
+	TokenHash string
+	UserID    int64
+	CreatedAt int64
+	ExpiresAt int64
+}
+
 type Event struct {
 	ID             int64
 	Name           string
@@ -25,9 +32,23 @@ type Seat struct {
 	RowLabel    string
 	SeatNumber  int64
 	PriceCents  int64
-	HeldBy      string
+	HeldBy      int64
 	HeldAt      int64
 	ExpiresAt   int64
-	SoldTo      string
+	SoldTo      int64
 	SoldAt      int64
+}
+
+type SignInAttempt struct {
+	Key         string
+	WindowStart int64
+	Failures    int64
+}
+
+type User struct {
+	ID           int64
+	Email        string
+	PasswordHash string
+	Role         string
+	CreatedAt    int64
 }

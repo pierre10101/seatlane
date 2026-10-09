@@ -8,6 +8,7 @@ import (
 
 	"github.com/pierre10101/go-ai-bridge/runtime/assert"
 	"github.com/pierre10101/go-ai-bridge/runtime/failure"
+	"github.com/pierre10101/go-ai-bridge/runtime/httpx"
 	"github.com/pierre10101/go-ai-bridge/runtime/page"
 	"github.com/pierre10101/seatlane/features/list_events/db"
 	"github.com/pierre10101/seatlane/internal/domain"
@@ -15,6 +16,9 @@ import (
 
 // Route is the HTTP contract.
 const Route = "GET /api/events"
+
+// Roles: anyone, signed in or not.
+var Roles = httpx.Public
 
 // Input: keyset paging over event ids.
 type Input struct {
