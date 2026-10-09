@@ -2,7 +2,7 @@ module github.com/pierre10101/seatlane
 
 go 1.24.4
 
-require github.com/pierre10101/go-ai-bridge v0.1.4
+require github.com/pierre10101/go-ai-bridge v0.2.0
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect

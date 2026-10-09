@@ -25,6 +25,6 @@ read lists only the seats their session holds, each with its `expires_at`.
 An event that does not exist simply has no holds: the list is empty.
 
 ## Failure cases
-- **F8** — the session is missing (the empty text: no valid cookie).
-- **F11** — `limit` is not between 1 and 100.
-- **F12** — `after` is zero or negative.
+- F8: the session is missing (the empty text: no valid cookie).
+- F11: `limit` is not between 1 and 100.
+- F12: `after` is zero or negative.

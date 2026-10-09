@@ -27,11 +27,11 @@ write. A hold whose `expires_at` equals now has expired and no longer blocks
 the seat; one that expires one second later still does.
 
 ## Failure cases
-- **F1** — the seat is already held: someone (another visitor, or you) holds it
+- F1: the seat is already held: someone (another visitor, or you) holds it
   and the hold has not expired. Nothing changes.
-- **F6** — the seat is already sold. Nothing changes.
-- **F7** — the seat does not exist. Nothing changes.
-- **F8** — the session is missing (the empty text: no valid cookie). Nothing changes.
+- F6: the seat is already sold. Nothing changes.
+- F7: the seat does not exist. Nothing changes.
+- F8: the session is missing (the empty text: no valid cookie). Nothing changes.
 
 ## Out of scope
 Confirming (confirm_hold) and releasing (release_hold) a hold; payment.

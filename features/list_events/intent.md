@@ -13,5 +13,5 @@ The home page lists the events on sale, newest first, as cards.
 - `next_after`: the cursor of the next page, 0 on the last page.
 
 ## Failure cases
-- **F11** — `limit` is not between 1 and 100.
-- **F12** — `after` is zero or negative.
+- F11: `limit` is not between 1 and 100.
+- F12: `after` is zero or negative.

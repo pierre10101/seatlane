@@ -34,17 +34,15 @@ A hold whose `expires_at` equals now has expired; one that expires one second
 after now has not.
 
 ## Failure cases
-- **F2** — at least one listed seat is still held by this session but its hold
+- F2: at least one listed seat is still held by this session but its hold
   has expired (`expires_at` is now or earlier): no seat is sold, every change
   is rolled back.
-- **F8** — the session is missing (the empty text: no valid cookie): nothing
+- F8: the session is missing (the empty text: no valid cookie): nothing
   is written.
-- **F13** — at least one listed seat is not held by this session (held by
+- F13: at least one listed seat is not held by this session (held by
   someone else, including a seat whose hold by this session expired and was
   then taken by someone else; released or never held; already sold; or no
   such seat): no seat is sold, every change is rolled back.
-
-Every failure changes nothing.
 
 ## Out of scope
 Taking and releasing holds; confirming one seat (confirm_hold); payment.

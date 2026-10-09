@@ -23,11 +23,11 @@ nobody else has taken yet can still be released (it frees the seat either
 way). It must change exactly one row.
 
 ## Failure cases
-- **F5** — the seat is already confirmed (sold to this session): a sale is not released.
-- **F6** — the seat is sold to someone else.
-- **F7** — the seat does not exist.
-- **F8** — the session is missing (the empty text: no valid cookie).
-- **F9** — this session has no hold on the seat (nobody holds it, or someone
-  else does).
-
-Every failure changes nothing.
+- F5: the seat is already confirmed (sold to this session): a sale is not
+  released. Nothing changes.
+- F6: the seat is sold to someone else. Nothing changes.
+- F7: the seat does not exist. Nothing changes.
+- F8: the session is missing (the empty text: no valid cookie). Nothing
+  changes.
+- F9: this session has no hold on the seat (nobody holds it, or someone
+  else does). Nothing changes.
