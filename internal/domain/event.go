@@ -11,4 +11,5 @@ type EventCard struct {
 	StartsAt  int64  `json:"starts_at"`
 	Tagline   string `json:"tagline"`
 	FromPrice Money  `json:"from_price"`
+	ToPrice   Money  `json:"to_price"`
 }

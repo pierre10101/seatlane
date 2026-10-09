@@ -31,8 +31,8 @@ func Open(t *testing.T, n int) *sql.DB {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { conn.Close() })
-	Exec(t, conn, `INSERT INTO events (id, name, venue, city, starts_at, tagline, from_price_cents, currency)
-		VALUES (1, 'Check Night', 'Check Hall', 'Cape Town', ?, 'A test event.', 45000, 'ZAR')`, T0+86400)
+	Exec(t, conn, `INSERT INTO events (id, name, venue, city, starts_at, tagline, from_price_cents, to_price_cents, currency)
+		VALUES (1, 'Check Night', 'Check Hall', 'Cape Town', ?, 'A test event.', 45000, 45000, 'ZAR')`, T0+86400)
 	for i := 1; i <= n; i++ {
 		Exec(t, conn, `INSERT INTO seats (id, event_id, section, section_rank, row_label, seat_number, price_cents)
 			VALUES (?, 1, 'Stalls', 1, 'A', ?, 45000)`, i, i)

@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS events (
     city             TEXT    NOT NULL,
     starts_at        INTEGER NOT NULL, -- unix seconds
     tagline          TEXT    NOT NULL,
-    from_price_cents INTEGER NOT NULL CHECK (from_price_cents > 0),
+    from_price_cents INTEGER NOT NULL CHECK (from_price_cents > 0),  -- cheapest seat
+    to_price_cents   INTEGER NOT NULL CHECK (to_price_cents >= from_price_cents), -- dearest seat
     currency         TEXT    NOT NULL,
     on_sale          INTEGER NOT NULL DEFAULT 1
 );

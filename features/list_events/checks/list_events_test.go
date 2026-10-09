@@ -36,7 +36,7 @@ func TestListsEventsOnSaleNewestFirst(t *testing.T) {
 	if err != nil || len(out.Events) != 2 || out.Events[0].EventID != 4 || out.NextAfter != 3 {
 		t.Fatalf("out %+v err %v", out, err)
 	}
-	if e := out.Events[1]; e.Name != "Highveld Jazz Nights" || e.FromPrice.Cents != 28000 || e.FromPrice.Currency != "ZAR" {
+	if e := out.Events[1]; e.Name != "Highveld Jazz Nights" || e.FromPrice.Cents != 28000 || e.ToPrice.Cents != 55000 || e.ToPrice.Currency != "ZAR" || e.FromPrice.Currency != "ZAR" {
 		t.Fatalf("card %+v", e)
 	}
 	rest, err := list(a, out.NextAfter, 2)

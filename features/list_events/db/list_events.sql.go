@@ -10,7 +10,7 @@ import (
 )
 
 const listEvents = `-- name: ListEvents :many
-SELECT id, name, venue, city, starts_at, tagline, from_price_cents, currency
+SELECT id, name, venue, city, starts_at, tagline, from_price_cents, to_price_cents, currency
 FROM events
 WHERE on_sale = 1 AND id < ?1
 ORDER BY id DESC
@@ -30,6 +30,7 @@ type ListEventsRow struct {
 	StartsAt       int64
 	Tagline        string
 	FromPriceCents int64
+	ToPriceCents   int64
 	Currency       string
 }
 
@@ -50,6 +51,7 @@ func (q *Queries) ListEvents(ctx context.Context, arg ListEventsParams) ([]ListE
 			&i.StartsAt,
 			&i.Tagline,
 			&i.FromPriceCents,
+			&i.ToPriceCents,
 			&i.Currency,
 		); err != nil {
 			return nil, err

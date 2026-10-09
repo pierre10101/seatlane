@@ -21,7 +21,7 @@ func (q *Queries) CountEvents(ctx context.Context, id int64) (int64, error) {
 }
 
 const eventByID = `-- name: EventByID :one
-SELECT id, name, venue, city, starts_at, tagline, from_price_cents, currency FROM events WHERE id = ?
+SELECT id, name, venue, city, starts_at, tagline, from_price_cents, to_price_cents, currency FROM events WHERE id = ?
 `
 
 type EventByIDRow struct {
@@ -32,6 +32,7 @@ type EventByIDRow struct {
 	StartsAt       int64
 	Tagline        string
 	FromPriceCents int64
+	ToPriceCents   int64
 	Currency       string
 }
 
@@ -46,6 +47,7 @@ func (q *Queries) EventByID(ctx context.Context, id int64) (EventByIDRow, error)
 		&i.StartsAt,
 		&i.Tagline,
 		&i.FromPriceCents,
+		&i.ToPriceCents,
 		&i.Currency,
 	)
 	return i, err

@@ -73,12 +73,12 @@ func Load(ctx context.Context, db *sql.DB, events []Event) error {
 	}
 	defer tx.Rollback()
 	for _, e := range events {
-		from := e.Sections[0].PriceCents
+		from, to := e.Sections[0].PriceCents, e.Sections[0].PriceCents
 		for _, s := range e.Sections {
-			from = min(from, s.PriceCents)
+			from, to = min(from, s.PriceCents), max(to, s.PriceCents)
 		}
-		res, err := tx.ExecContext(ctx, `INSERT INTO events (name, venue, city, starts_at, tagline, from_price_cents, currency, on_sale)
-			VALUES (?, ?, ?, ?, ?, ?, 'ZAR', 1)`, e.Name, e.Venue, e.City, e.StartsAt, e.Tagline, from)
+		res, err := tx.ExecContext(ctx, `INSERT INTO events (name, venue, city, starts_at, tagline, from_price_cents, to_price_cents, currency, on_sale)
+			VALUES (?, ?, ?, ?, ?, ?, ?, 'ZAR', 1)`, e.Name, e.Venue, e.City, e.StartsAt, e.Tagline, from, to)
 		if err != nil {
 			return fmt.Errorf("seed event %q: %w", e.Name, err)
 		}

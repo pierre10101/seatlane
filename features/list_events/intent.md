@@ -9,7 +9,7 @@ The home page lists the events on sale, newest first, as cards.
 
 ## Outputs
 - `events`: one page of event cards (name, venue, city, start time, tagline,
-  lowest price).
+  lowest and highest seat price: `from_price` and `to_price`).
 - `next_after`: the cursor of the next page, 0 on the last page.
 
 ## Failure cases

@@ -13,7 +13,7 @@ Path values are required. A query value may be left out: `limit` is then the def
 
 Every answer is JSON. An error answer is `{"error": {"id": <id>, "message": <message>}}`.
 - HTTP 200 OK on success, with an object of these 2 fields:
-  - `events`: a list (possibly empty) of event cards, each an object with `event_id` (a whole number), `name` (text), `venue` (text), `city` (text), `starts_at` (a whole number), `tagline` (text) and `from_price` (an amount of money).
+  - `events`: a list (possibly empty) of event cards, each an object with `event_id` (a whole number), `name` (text), `venue` (text), `city` (text), `starts_at` (a whole number), `tagline` (text), `from_price` (an amount of money) and `to_price` (an amount of money).
   - `next_after`: a whole number.
 - Pages use keyset cursors, not OFFSET: to get the next page, send the answer's `next_after` as `after`; `next_after` is 0 when there is no next page. A page has at most 100 rows; when `limit` is left out, at most 20.
 - HTTP 400 Bad Request, id "bad_request", with a message describing the problem, if a path value is missing, a value is not a whole number, or a query value appears more than once. The action does not run.
@@ -43,6 +43,7 @@ Steps 3 to 7 run in one read-only database transaction. It begins with the query
    - `starts_at` = the listed event's `starts_at`
    - `tagline` = the listed event's `tagline`
    - `from_price` = an amount of money with `cents` = the listed event's `from_price_cents` and `currency` = the listed event's `currency`
+   - `to_price` = an amount of money with `cents` = the listed event's `to_price_cents` and `currency` = the listed event's `currency`
    If there are no listed events, that list is empty.
 5. Let the next cursor be the `id` of the last listed event if the page is full (there are the request's `limit` listed events), otherwise 0: there is no next page.
 6. Build the answer:

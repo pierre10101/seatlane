@@ -2,7 +2,7 @@
 SELECT COUNT(*) FROM events WHERE id = ?;
 
 -- name: EventByID :one
-SELECT id, name, venue, city, starts_at, tagline, from_price_cents, currency FROM events WHERE id = ?;
+SELECT id, name, venue, city, starts_at, tagline, from_price_cents, to_price_cents, currency FROM events WHERE id = ?;
 
 -- name: ListEventSeats :many
 SELECT id, section, section_rank, row_label, seat_number, price_cents, held_by, expires_at, sold_to

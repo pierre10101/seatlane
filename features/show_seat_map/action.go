@@ -107,6 +107,7 @@ func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
 		StartsAt:  event.StartsAt,
 		Tagline:   event.Tagline,
 		FromPrice: domain.Money{Cents: event.FromPriceCents, Currency: event.Currency},
+		ToPrice:   domain.Money{Cents: event.ToPriceCents, Currency: event.Currency},
 	}
 	out := Output{Event: card, Seats: items, NextAfter: next, Now: in.Now}
 	assert.Post(out.Seats != nil, "an empty page is [], not null")

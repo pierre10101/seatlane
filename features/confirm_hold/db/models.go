@@ -12,6 +12,7 @@ type Event struct {
 	StartsAt       int64
 	Tagline        string
 	FromPriceCents int64
+	ToPriceCents   int64
 	Currency       string
 	OnSale         int64
 }

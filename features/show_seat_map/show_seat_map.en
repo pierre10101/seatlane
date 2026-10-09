@@ -18,7 +18,7 @@ The action also takes these 2 values, which the caller does not send:
 
 Every answer is JSON. An error answer is `{"error": {"id": <id>, "message": <message>}}`.
 - HTTP 200 OK on success, with an object of these 4 fields:
-  - `event`: an event card, as an object with `event_id` (a whole number), `name` (text), `venue` (text), `city` (text), `starts_at` (a whole number), `tagline` (text) and `from_price` (an amount of money).
+  - `event`: an event card, as an object with `event_id` (a whole number), `name` (text), `venue` (text), `city` (text), `starts_at` (a whole number), `tagline` (text), `from_price` (an amount of money) and `to_price` (an amount of money).
   - `seats`: a list (possibly empty) of seat on the maps, each an object with `seat_id` (a whole number), `section` (text), `section_rank` (a whole number), `row` (text), `number` (a whole number), `price` (an amount of money), `available` (true or false), `held_by_me` (true or false), `held_by_other` (true or false), `sold_to_me` (true or false) and `sold_to_other` (true or false).
   - `next_after`: a whole number.
   - `now`: a whole number.
@@ -70,6 +70,7 @@ Steps 4 to 12 run in one read-only database transaction. It begins with the quer
    - `starts_at` = the found event's `starts_at`
    - `tagline` = the found event's `tagline`
    - `from_price` = an amount of money with `cents` = the found event's `from_price_cents` and `currency` = the found event's `currency`
+   - `to_price` = an amount of money with `cents` = the found event's `to_price_cents` and `currency` = the found event's `currency`
 11. Build the answer:
    - `event` = `card`
    - `seats` = the seat on the maps built in step 8

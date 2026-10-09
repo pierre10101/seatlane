@@ -66,6 +66,7 @@ func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
 			StartsAt:  row.StartsAt,
 			Tagline:   row.Tagline,
 			FromPrice: domain.Money{Cents: row.FromPriceCents, Currency: row.Currency},
+			ToPrice:   domain.Money{Cents: row.ToPriceCents, Currency: row.Currency},
 		}
 	}
 
