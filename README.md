@@ -77,12 +77,18 @@ server says.
   or `Sec-Fetch-Site` is refused too. Anything else is F19 (403), with a
   fresh cookie so the web app can retry once. The key comes from
   `SEATLANE_CSRF_KEY` (64 hex characters) or is random per process.
-- **Sign-in rate limit.** At most 5 failed sign-ins per client IP + email in
-  15 minutes; the next attempt is F18 (429, `Retry-After`) without checking
-  the password. The rule is a pure function, `auth.Reserve(stored, now)`, and
-  `now` is passed in (`httpx.Now()`, which the dev clock replaces). Each
-  attempt is counted inside the same transaction that reads the counter, before the
-  password is checked, so parallel guesses cannot get past the limit.
+- **Sign-in rate limit.** Two caps, each per 15-minute window: at most 5
+  failed sign-ins per client IP + email, and at most 20 failed sign-ins per
+  client IP across all emails. Once either is reached, the next attempt is
+  F18 (429, `Retry-After`) without checking the password. There is no cap per
+  email across IPs, so nobody can lock an account's owner out from elsewhere.
+  The rules are pure functions, `auth.ReserveBoth(pair, ip, now)` and
+  `auth.Refund`, and `now` is passed in (`httpx.Now()`, which the dev clock
+  replaces). Each attempt is counted against both caps inside the same
+  locked transaction that reads them, before the password is checked, so
+  parallel guesses cannot get past either limit. A successful sign-in
+  clears its IP + email count and gives back its one in the IP count, so
+  only failures use up the IP's 20.
 - **Errors carry a stable ID.** Every failure is
   `{"error": {"id": "F1", "message": "..."}}`; the catalogue is in
   [docs/failures.md](docs/failures.md). The UI maps `error.id` to friendly

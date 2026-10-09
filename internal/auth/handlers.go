@@ -138,39 +138,46 @@ func (s *Service) SignUp(email, password string, now int64) (Account, string, er
 	return res.acc, res.token, err
 }
 
-// SignIn checks the rate limit for ip+email, then the password, and on
-// success starts a new session (sign_in/intent.md). retryAfter is set with F18.
+// SignIn checks both rate-limit caps (ip+email, and ip across all emails),
+// then the password, and on success starts a new session
+// (sign_in/intent.md). retryAfter is set with F18.
 func (s *Service) SignIn(ip, email, password string, now int64) (acc Account, token string, retryAfter int64, err error) {
 	email = NormalizeEmail(email)
-	key := limitKey(ip, email)
+	pairKey, ipKey := limitKey(ip, email), ipLimitKey(ip)
 	type reservation struct {
 		allowed    bool
 		retryAfter int64
+		ipCount    Attempts // the per-IP count as saved, for Refund
 		user       db.UserByEmailRow
 		found      bool
 	}
+	// One write transaction (BEGIN IMMEDIATE): read both counts, decide,
+	// save both, before the password is checked.
 	res, err := txn.Run(context.Background(), func(ctx context.Context) (reservation, error) {
-		prev := Attempts{}
-		row, err := s.q.SignInAttempts(ctx, key)
-		switch {
-		case err == nil:
-			prev = Attempts{WindowStart: row.WindowStart, Failures: row.Failures}
-		case !errors.Is(err, sql.ErrNoRows):
+		pair, err := s.attempts(ctx, pairKey)
+		if err != nil {
 			return reservation{}, err
 		}
-		next, allowed, wait := Reserve(prev, now)
+		ipPrev, err := s.attempts(ctx, ipKey)
+		if err != nil {
+			return reservation{}, err
+		}
+		nextPair, nextIP, allowed, wait := ReserveBoth(pair, ipPrev, now)
 		if !allowed {
 			return reservation{retryAfter: wait}, nil
 		}
-		if err := s.q.SaveSignInAttempts(ctx, db.SaveSignInAttemptsParams{Key: key, WindowStart: next.WindowStart, Failures: next.Failures}); err != nil {
+		if err := s.saveAttempts(ctx, pairKey, nextPair); err != nil {
+			return reservation{}, err
+		}
+		if err := s.saveAttempts(ctx, ipKey, nextIP); err != nil {
 			return reservation{}, err
 		}
 		user, err := s.q.UserByEmail(ctx, email)
 		switch {
 		case err == nil:
-			return reservation{allowed: true, user: user, found: true}, nil
+			return reservation{allowed: true, ipCount: nextIP, user: user, found: true}, nil
 		case errors.Is(err, sql.ErrNoRows):
-			return reservation{allowed: true}, nil
+			return reservation{allowed: true, ipCount: nextIP}, nil
 		}
 		return reservation{}, err
 	})
@@ -186,7 +193,14 @@ func (s *Service) SignIn(ip, email, password string, now int64) (acc Account, to
 		return Account{}, "", 0, F17
 	}
 	token, err = txn.Run(context.Background(), func(ctx context.Context) (string, error) {
-		if err := s.q.ClearSignInAttempts(ctx, key); err != nil {
+		if err := s.q.ClearSignInAttempts(ctx, pairKey); err != nil {
+			return "", err
+		}
+		cur, err := s.attempts(ctx, ipKey)
+		if err != nil {
+			return "", err
+		}
+		if err := s.saveAttempts(ctx, ipKey, Refund(cur, res.ipCount)); err != nil {
 			return "", err
 		}
 		if err := s.q.DeleteExpiredSessions(ctx, now); err != nil {
@@ -198,6 +212,23 @@ func (s *Service) SignIn(ip, email, password string, now int64) (acc Account, to
 		return Account{}, "", 0, err
 	}
 	return Account{UserID: res.user.ID, Email: res.user.Email, Role: res.user.Role}, token, 0, nil
+}
+
+// attempts reads a rate-limit key's stored count (zero if none).
+func (s *Service) attempts(ctx context.Context, key string) (Attempts, error) {
+	row, err := s.q.SignInAttempts(ctx, key)
+	switch {
+	case err == nil:
+		return Attempts{WindowStart: row.WindowStart, Failures: row.Failures}, nil
+	case errors.Is(err, sql.ErrNoRows):
+		return Attempts{}, nil
+	}
+	return Attempts{}, err
+}
+
+// saveAttempts stores a rate-limit key's count.
+func (s *Service) saveAttempts(ctx context.Context, key string, a Attempts) error {
+	return s.q.SaveSignInAttempts(ctx, db.SaveSignInAttemptsParams{Key: key, WindowStart: a.WindowStart, Failures: a.Failures})
 }
 
 // SignOut deletes the session of token (none: nothing to do).

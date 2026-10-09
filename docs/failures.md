@@ -64,11 +64,13 @@ and every change is rolled back.
 - F17 is the same answer, status and timing for an unknown email and a wrong
   password: an unknown email is still checked against a dummy bcrypt hash of
   the same cost.
-- F18: at most 5 failed sign-ins per client IP + email in a 15-minute window
-  that starts at the first failure. The 6th attempt in the window is refused
-  before the password is checked, even if it is right. The window starts again
-  900 seconds after its first failure (899 s: still refused; 900 s: allowed).
-  A successful sign-in clears the counter.
+- F18: at most 5 failed sign-ins per client IP + email, and at most 20 per
+  client IP across all emails, each in a 15-minute window that starts at its
+  first failure. The next attempt over either cap is refused before the
+  password is checked, even if it is right. A window starts again 900 seconds
+  after its first failure (899 s: still refused; 900 s: allowed). A
+  successful sign-in clears its IP + email count and gives back its own
+  attempt in the IP count. There is no per-email cap across IPs.
 - F19: a state-changing `/api/` request needs the header `X-CSRF-Token` equal
   to the `seatlane_csrf` cookie, a valid HMAC token bound to the current
   sign-in session, and no cross-site `Origin`/`Sec-Fetch-Site`. The F19

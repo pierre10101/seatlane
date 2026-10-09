@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -334,5 +335,109 @@ func TestIdentityHook(t *testing.T) {
 	}
 	if _, _, ok := s.Identify(req(token)); ok {
 		t.Fatal("signed out, still signed in")
+	}
+}
+
+// The second cap: at most 20 failed sign-ins per IP in 15 minutes, across
+// all emails, on top of the 5 per IP + email.
+func TestF18_PerIPCapAcrossEmails(t *testing.T) {
+	s, conn := newService(t)
+	if _, _, err := s.SignUp("eve@example.com", "eves password", t0); err != nil {
+		t.Fatal(err)
+	}
+	const ip = "10.1.0.1"
+	// 20 failures, one per email: each email is far under its own cap of 5.
+	for i := int64(0); i < 20; i++ {
+		email := fmt.Sprintf("guess%02d@example.com", i)
+		if _, _, _, err := s.SignIn(ip, email, "guess", t0+i); !errors.Is(err, F17) {
+			t.Fatalf("failure %d: %v", i+1, err)
+		}
+	}
+	if n := count(t, conn, `SELECT failures FROM sign_in_attempts WHERE key = 'ip:`+ip+`'`); n != 20 {
+		t.Fatalf("per-IP count %d, want 20", n)
+	}
+	sessions := count(t, conn, `SELECT COUNT(*) FROM auth_sessions`)
+	// The 21st, with a fresh email and even the right password: refused
+	// before the password is checked, and nothing is raised.
+	_, _, retry, err := s.SignIn(ip, "eve@example.com", "eves password", t0+20)
+	if !errors.Is(err, F18) || retry != 880 {
+		t.Fatalf("21st: %v retry %d", err, retry)
+	}
+	_, _, retry, err = s.SignIn(ip, "new@example.com", "guess", t0+899)
+	if !errors.Is(err, F18) || retry != 1 {
+		t.Fatalf("at +899: %v retry %d", err, retry)
+	}
+	if count(t, conn, `SELECT failures FROM sign_in_attempts WHERE key = 'ip:`+ip+`'`) != 20 ||
+		count(t, conn, `SELECT COUNT(*) FROM sign_in_attempts WHERE key = '`+ip+`|eve@example.com'`) != 0 ||
+		count(t, conn, `SELECT COUNT(*) FROM auth_sessions`) != sessions {
+		t.Fatal("F18 must not raise a count or create a session")
+	}
+	// Another IP is not affected.
+	if _, _, _, err := s.SignIn("10.1.0.2", "eve@example.com", "eves password", t0+30); err != nil {
+		t.Fatalf("another IP: %v", err)
+	}
+	// Allowed again at +900 (the window started at the first failure, t0).
+	if _, _, _, err := s.SignIn(ip, "eve@example.com", "eves password", t0+900); err != nil {
+		t.Fatalf("at +900: %v", err)
+	}
+}
+
+// A successful sign-in does not use up the IP's budget (its reservation is
+// given back), and does not reset the failures counted before it either.
+func TestF18_PerIPCapCountsOnlyFailures(t *testing.T) {
+	s, _ := newService(t)
+	if _, _, err := s.SignUp("fay@example.com", "fays password", t0); err != nil {
+		t.Fatal(err)
+	}
+	const ip = "10.1.0.3"
+	for i := int64(0); i < 19; i++ {
+		if _, _, _, err := s.SignIn(ip, fmt.Sprintf("g%02d@example.com", i), "guess", t0+i); !errors.Is(err, F17) {
+			t.Fatalf("failure %d: %v", i+1, err)
+		}
+	}
+	for i := int64(0); i < 3; i++ { // successes in between
+		if _, _, _, err := s.SignIn(ip, "fay@example.com", "fays password", t0+20+i); err != nil {
+			t.Fatalf("success %d: %v", i+1, err)
+		}
+	}
+	if _, _, _, err := s.SignIn(ip, "g19@example.com", "guess", t0+30); !errors.Is(err, F17) {
+		t.Fatalf("20th failure: %v", err)
+	}
+	if _, _, _, err := s.SignIn(ip, "fay@example.com", "fays password", t0+31); !errors.Is(err, F18) {
+		t.Fatalf("after 20 failures: %v", err)
+	}
+}
+
+// Parallel guesses from one IP across many emails: exactly 20 reach the
+// password check, the rest are F18.
+func TestF18_PerIPCapParallel(t *testing.T) {
+	s, conn := newService(t)
+	const ip = "10.1.0.9"
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	f17, f18 := 0, 0
+	for i := 0; i < 32; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _, _, err := s.SignIn(ip, fmt.Sprintf("p%02d@example.com", i), "guess", t0)
+			mu.Lock()
+			defer mu.Unlock()
+			switch {
+			case errors.Is(err, F17):
+				f17++
+			case errors.Is(err, F18):
+				f18++
+			default:
+				t.Errorf("unexpected %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+	if f17 != 20 || f18 != 12 {
+		t.Fatalf("parallel: F17 %d F18 %d, want 20 and 12", f17, f18)
+	}
+	if n := count(t, conn, `SELECT failures FROM sign_in_attempts WHERE key = 'ip:`+ip+`'`); n != 20 {
+		t.Fatalf("per-IP count %d, want 20", n)
 	}
 }

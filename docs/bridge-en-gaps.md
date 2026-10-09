@@ -152,6 +152,16 @@ works, but the domain has to repeat the rule "0 owns nothing" (`heldBy != 0
 viewer". Wanted: the English names a signed-out viewer, or the runtime offers
 a typed "signed in or not" value.
 
+### Known issue (not a grammar gap): F16 reveals which emails have accounts
+
+Sign-up answers F16 "email is already registered" (409) for a taken email,
+so anyone can ask whether a given email has a Seatlane account (account
+enumeration). Sign-in does not leak this (F17 is the same for an unknown
+email and a wrong password, with the same timing), and sign-in is rate-limited,
+but sign-up is not. This is accepted for the demo, to fix later, for example by
+always answering sign-up the same way and telling the address owner by email
+(needs outgoing mail) or by rate-limiting sign-up per IP.
+
 ### Not attempted: organizer ownership
 
 Organizers exist as a role (`AppRoles` has customer, organizer and admin), and
