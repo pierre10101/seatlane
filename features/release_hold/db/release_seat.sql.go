@@ -11,19 +11,19 @@ import (
 
 const releaseSeat = `-- name: ReleaseSeat :execrows
 UPDATE seats
-SET held_by = '', held_at = 0, expires_at = 0
-WHERE id = ?1 AND held_by = ?2 AND sold_to = ''
+SET held_by = 0, held_at = 0, expires_at = 0
+WHERE id = ?1 AND held_by = ?2 AND sold_to = 0
 `
 
 type ReleaseSeatParams struct {
-	SeatID  int64
-	Session string
+	SeatID int64
+	User   int64
 }
 
-// One statement clears the hold only if, at that moment, this session holds
+// One statement clears the hold only if, at that moment, this user holds
 // the seat and it is not sold (Q6 + S10).
 func (q *Queries) ReleaseSeat(ctx context.Context, arg ReleaseSeatParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, releaseSeat, arg.SeatID, arg.Session)
+	result, err := q.db.ExecContext(ctx, releaseSeat, arg.SeatID, arg.User)
 	if err != nil {
 		return 0, err
 	}

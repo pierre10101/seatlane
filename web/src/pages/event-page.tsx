@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { ArrowLeft, CalendarDays, Clock3, MapPin, RefreshCw, SearchX, TicketX, WifiOff } from 'lucide-react'
@@ -14,6 +14,7 @@ import { CheckoutPanel, type HoldRow } from '@/components/checkout-panel'
 import { SuccessState } from '@/components/success-state'
 import { StateCard } from '@/components/states'
 import { useTicker } from '@/hooks/use-ticker'
+import { useAuth } from '@/hooks/use-auth'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 
 const POLL_MS = 4000
@@ -27,6 +28,10 @@ type Load = { status: 'loading' } | { status: 'error'; error: unknown } | { stat
 
 export function EventPage() {
   const eventId = Number(useParams().id)
+  // Who is signed in (0: nobody): the page re-reads the server when it changes.
+  const who = useAuth().account?.user_id ?? 0
+  const navigate = useNavigate()
+  const location = useLocation()
   const [load, setLoad] = useState<Load>({ status: 'loading' })
   const [map, setMap] = useState<SeatMapData | null>(null)
   const [holds, setHolds] = useState<HoldView[]>([])
@@ -58,7 +63,16 @@ export function EventPage() {
   const refresh = useCallback(async () => {
     const mine = ++seq.current
     try {
-      const [m, h] = await Promise.all([api.seatMap(eventId), api.myHolds(eventId)])
+      // My holds need a signed-in customer; the server says so with 401/403,
+      // and then I simply have none.
+      const [m, h] = await Promise.all([
+        api.seatMap(eventId),
+        api.myHolds(eventId).catch((e: unknown) => {
+          const id = errorId(e)
+          if (id === 'unauthorized' || id === 'forbidden') return { holds: [], now: 0 }
+          throw e
+        }),
+      ])
       if (mine !== seq.current) return
       const receivedAt = performance.now()
       const next = h.holds.map((x) => ({ ...x, serverNow: h.now, receivedAt }))
@@ -98,7 +112,12 @@ export function EventPage() {
       window.clearInterval(id)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [refresh])
+  }, [refresh, who])
+
+  // Signed in (or switched account): the old "sign in to continue" toasts no longer apply.
+  useEffect(() => {
+    if (who) toast.dismiss()
+  }, [who])
 
   useEffect(() => {
     if (map) document.title = `${map.event.name} · Seatlane`
@@ -108,10 +127,12 @@ export function EventPage() {
     (e: unknown, what: string) => {
       const copy = errorCopy(e)
       const id = errorId(e)
-      toast.error(copy.title, { id: `err-${id}-${what}`, description: copy.description })
+      // 401 from the server: offer the way in, and come back here after.
+      const action = id === 'unauthorized' ? { label: 'Sign in', onClick: () => navigate(`/sign-in?next=${encodeURIComponent(location.pathname)}`) } : undefined
+      toast.error(copy.title, { id: `err-${id}-${what}`, description: copy.description, action })
       announce(`${what}: ${copy.title}. ${copy.description}`)
     },
-    [announce],
+    [announce, navigate, location.pathname],
   )
 
   const seatById = useMemo(() => new Map((map?.seats ?? []).map((s) => [s.seat_id, s])), [map])

@@ -12,14 +12,14 @@ import (
 const listMyHolds = `-- name: ListMyHolds :many
 SELECT id, held_at, expires_at
 FROM seats
-WHERE event_id = ?1 AND held_by = ?2 AND sold_to = '' AND id < ?3
+WHERE event_id = ?1 AND held_by = ?2 AND sold_to = 0 AND id < ?3
 ORDER BY id DESC
 LIMIT ?4
 `
 
 type ListMyHoldsParams struct {
 	EventID int64
-	Session string
+	User    int64
 	After   int64
 	Limit   int64
 }
@@ -31,12 +31,12 @@ type ListMyHoldsRow struct {
 }
 
 // The viewer's own holds on one event, newest seat first (Q5): only rows
-// whose held_by is this session, so nobody else's hold time is ever read
-// out. Expired holds of this session are listed too, flagged inactive.
+// whose held_by is this user, so nobody else's hold time is ever read
+// out. Expired holds of this user are listed too, flagged inactive.
 func (q *Queries) ListMyHolds(ctx context.Context, arg ListMyHoldsParams) ([]ListMyHoldsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listMyHolds,
 		arg.EventID,
-		arg.Session,
+		arg.User,
 		arg.After,
 		arg.Limit,
 	)

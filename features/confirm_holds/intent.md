@@ -1,20 +1,24 @@
 # Intent: Confirm holds
 
 ## Why
-A visitor who holds several seats of an event confirms them together from the
+A customer who holds several seats of an event confirms them together from the
 review screen. Every seat in the list is confirmed, or none are: a group where
 one seat can no longer be sold must never end up half booked.
 
 ## Who
-The visitor whose anonymous session holds the seats. The session is the
-`session` input, which the bridge-en runtime sets from the session cookie
-`bridge_session` (the empty text without a valid cookie); the caller never sends it.
+A signed-in customer (`httpx.Roles("customer")`). The bridge-en runtime
+answers HTTP 401 `unauthorized` to a caller who is not signed in and HTTP 403
+`forbidden` to a signed-in organizer or admin, before the action runs and
+without writing anything. The customer is the `user` input (their account
+id), which the runtime sets from Seatlane's sign-in session (the
+`seatlane_auth` cookie, looked up by `internal/auth`); the caller never sends
+it, and a request that does is answered with HTTP 400.
 
 ## Inputs
 - `seat_ids` — the seats shown on the review screen: 1 to 20 seat ids, each at
   most once. An empty list, more than 20 ids, a repeated id, a null or an id
   that is not a whole number is refused with HTTP 400 before anything runs.
-- `session` — the visitor's session id (set by the server from the cookie).
+- `user` — the signed-in customer's account id (set by the server).
 - `now` — the current time, set by the server.
 
 ## Outputs
@@ -23,24 +27,22 @@ The visitor whose anonymous session holds the seats. The session is the
 
 ## Rule
 One conditional UPDATE sells every listed seat only if, at that moment, it is
-not sold, it is held by this session and its hold has not expired
+not sold, it is held by this customer and its hold has not expired
 (`expires_at` is later than now); `id IN (sqlc.slice(seat_ids))` is its last
 parameter. It must change exactly one row per listed seat; otherwise the
-transaction rolls back and no seat in the list is sold. Seats this session
+transaction rolls back and no seat in the list is sold. Seats this customer
 holds that are not in the list are never touched. A read made after the
 UPDATE (never before) explains an expired hold: it counts the listed seats
-this session still holds, unsold, whose `expires_at` is no later than now.
+this customer still holds, unsold, whose `expires_at` is no later than now.
 A hold whose `expires_at` equals now has expired; one that expires one second
 after now has not.
 
 ## Failure cases
-- F2: at least one listed seat is still held by this session but its hold
+- F2: at least one listed seat is still held by this customer but its hold
   has expired (`expires_at` is now or earlier): no seat is sold, every change
   is rolled back.
-- F8: the session is missing (the empty text: no valid cookie): nothing
-  is written.
-- F13: at least one listed seat is not held by this session (held by
-  someone else, including a seat whose hold by this session expired and was
+- F13: at least one listed seat is not held by this customer (held by
+  someone else, including a seat whose hold by this customer expired and was
   then taken by someone else; released or never held; already sold; or no
   such seat): no seat is sold, every change is rolled back.
 

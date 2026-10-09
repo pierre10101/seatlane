@@ -8,6 +8,7 @@ import (
 
 	"github.com/pierre10101/go-ai-bridge/runtime/assert"
 	"github.com/pierre10101/go-ai-bridge/runtime/failure"
+	"github.com/pierre10101/go-ai-bridge/runtime/httpx"
 	"github.com/pierre10101/go-ai-bridge/runtime/page"
 	"github.com/pierre10101/seatlane/features/show_seat_map/db"
 	"github.com/pierre10101/seatlane/internal/domain"
@@ -16,16 +17,19 @@ import (
 // Route is the HTTP contract.
 const Route = "GET /api/events/{id}/seats"
 
-// Input: path and query; session and now are set by the server.
+// Roles: anyone, signed in or not.
+var Roles = httpx.Public
+
+// Input: path and query; the signed-in user and now are set by the server.
 type Input struct {
-	EventID int64  `json:"event_id" path:"id"`
-	After   int64  `json:"after" query:"after"`
-	Limit   int64  `json:"limit" query:"limit"`
-	Session string `json:"session" server:"session"`
-	Now     int64  `json:"now" clock:"now"`
+	EventID int64 `json:"event_id" path:"id"`
+	After   int64 `json:"after" query:"after"`
+	Limit   int64 `json:"limit" query:"limit"`
+	User    int64 `json:"user" server:"user"`
+	Now     int64 `json:"now" clock:"now"`
 }
 
-// Output: the event, one page of seats with their state for this session,
+// Output: the event, one page of seats with their state for the viewer,
 // the next cursor and the server's clock.
 type Output struct {
 	Event     domain.EventCard  `json:"event"`
@@ -36,7 +40,6 @@ type Output struct {
 
 // Failure cases. IDs match intent.md, docs/failures.md and checks/.
 var (
-	F8  = failure.New("F8", http.StatusUnauthorized, "session is required")
 	F10 = failure.New("F10", http.StatusNotFound, "event does not exist")
 	F11 = failure.New("F11", http.StatusBadRequest, "page limit is out of range")
 	F12 = failure.New("F12", http.StatusBadRequest, "page cursor must be greater than zero")
@@ -52,9 +55,6 @@ func New(q *db.Queries) *Action { return &Action{q: q} }
 
 // Handle runs in one read-only transaction (httpx.Bind on a GET).
 func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
-	if in.Session == "" {
-		return Output{}, F8
-	}
 	if !page.IsPageLimit(in.Limit) {
 		return Output{}, F11
 	}
@@ -90,10 +90,10 @@ func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
 			Number:      row.SeatNumber,
 			Price:       domain.Money{Cents: row.PriceCents, Currency: event.Currency},
 			Available:   domain.IsAvailable(row.HeldBy, row.ExpiresAt, row.SoldTo, in.Now),
-			HeldByMe:    domain.IsHeldBy(row.HeldBy, row.ExpiresAt, row.SoldTo, in.Session, in.Now),
-			HeldByOther: domain.IsHeldByOther(row.HeldBy, row.ExpiresAt, row.SoldTo, in.Session, in.Now),
-			SoldToMe:    domain.IsSoldTo(row.SoldTo, in.Session),
-			SoldToOther: domain.IsSoldToOther(row.SoldTo, in.Session),
+			HeldByMe:    domain.IsHeldBy(row.HeldBy, row.ExpiresAt, row.SoldTo, in.User, in.Now),
+			HeldByOther: domain.IsHeldByOther(row.HeldBy, row.ExpiresAt, row.SoldTo, in.User, in.Now),
+			SoldToMe:    domain.IsSoldTo(row.SoldTo, in.User),
+			SoldToOther: domain.IsSoldToOther(row.SoldTo, in.User),
 		}
 	}
 

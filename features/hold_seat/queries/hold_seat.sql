@@ -3,5 +3,5 @@
 -- The caller checks that exactly one row changed (S10).
 -- name: HoldSeat :execrows
 UPDATE seats
-SET held_by = sqlc.arg(session), held_at = sqlc.arg(now), expires_at = sqlc.arg(now) + 600
-WHERE id = sqlc.arg(seat_id) AND sold_to = '' AND (held_by = '' OR expires_at <= sqlc.arg(now));
+SET held_by = sqlc.arg(user), held_at = sqlc.arg(now), expires_at = sqlc.arg(now) + 600
+WHERE id = sqlc.arg(seat_id) AND sold_to = 0 AND (held_by = 0 OR expires_at <= sqlc.arg(now));

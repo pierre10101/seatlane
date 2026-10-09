@@ -24,7 +24,7 @@ jobs:
         with:
           go-version-file: go.mod
       # Installs the bridge-en binary of the version go.mod requires.
-      - uses: pierre10101/go-ai-bridge/.github/actions/setup-bridge-en@v0.2.0
+      - uses: pierre10101/go-ai-bridge/.github/actions/setup-bridge-en@v0.3.0
       - name: bridge-en -check
         run: bridge-en -check features/*/
       - name: go vet
@@ -48,9 +48,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - uses: pierre10101/go-ai-bridge/.github/actions/setup-bridge-en@v0.2.0
+      - uses: pierre10101/go-ai-bridge/.github/actions/setup-bridge-en@v0.3.0
       # Creates or updates the one comment marked <!-- bridge-en:pr-english -->.
-      - uses: pierre10101/go-ai-bridge/.github/actions/pr-english@v0.2.0
+      - uses: pierre10101/go-ai-bridge/.github/actions/pr-english@v0.3.0
         with:
           features: "features/*/"
 

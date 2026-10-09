@@ -3,8 +3,7 @@ package checks
 import (
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
-	"strings"
+	"strconv"
 	"testing"
 	"time"
 
@@ -15,59 +14,72 @@ import (
 	"github.com/pierre10101/seatlane/internal/testkit"
 )
 
-// Over HTTP the server sets now (httpx.ClockRule) and session (the cookie
-// bridge_session, httpx.SessionRule); the caller can set neither, in the body
-// or the query string. Without a valid cookie the session is the empty text: F8. Errors
-// carry the F-ID in error.id.
-func TestF1_HTTPHoldUsesServerTimeAndCookieSession(t *testing.T) {
+func id(u int64) string { return strconv.FormatInt(u, 10) }
+
+// Over HTTP the server sets now (httpx.ClockRule) and the signed-in user
+// (httpx.UserRule, from the sign-in hook); the caller can set neither, in the
+// body or the query string. Only a signed-in customer may hold a seat: 401
+// when not signed in, 403 for an organizer or admin, and nothing is written
+// either way. Errors carry the F-ID in error.id.
+func TestF1_HTTPHoldIsForSignedInCustomers(t *testing.T) {
 	conn := testkit.Open(t, 3)
 	old := httpx.Now
 	httpx.Now = func() time.Time { return time.Unix(t0, 0) }
 	t.Cleanup(func() { httpx.Now = old })
 	mux := http.NewServeMux()
-	mux.Handle(hold_seat.Route, httpx.Bind(hold_seat.New(db.New(txn.DB(conn))).Handle))
-	post := func(cookie, target, body string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest(http.MethodPost, target, strings.NewReader(body))
-		if cookie != "" {
-			req.AddCookie(&http.Cookie{Name: httpx.SessionCookie, Value: cookie})
+	mux.Handle(hold_seat.Route, httpx.Bind(hold_seat.Roles, hold_seat.New(db.New(txn.DB(conn))).Handle))
+	h := testkit.Serve(mux)
+	post := func(user int64, role, target, body string) (int, string, []byte) {
+		u := ""
+		if user != 0 {
+			u = id(user)
 		}
-		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, req)
-		return rec
+		rec := testkit.Do(h, http.MethodPost, target, body, u, role)
+		return rec.Code, testkit.ErrorID(rec), rec.Body.Bytes()
 	}
+
 	for _, r := range []struct{ target, body string }{
-		{"/api/holds", `{"seat_id": 1, "session": 7}`},
-		{"/api/holds", `{"seat_id": 1, "Session": 7}`},
-		{"/api/holds?session=7", `{"seat_id": 1}`},
+		{"/api/holds", `{"seat_id": 1, "user": 2}`},
+		{"/api/holds", `{"seat_id": 1, "User": 2}`},
+		{"/api/holds?user=2", `{"seat_id": 1}`},
+		{"/api/holds", `{"seat_id": 1, "role": "customer"}`},
 		{"/api/holds", `{"seat_id": 1, "now": 1}`},
 		{"/api/holds?now=1", `{"seat_id": 1}`},
 	} {
-		if rec := post(testkit.Alice, r.target, r.body); rec.Code != http.StatusBadRequest {
-			t.Fatalf("caller-sent %s %s: %d %s", r.target, r.body, rec.Code, rec.Body)
+		if code, _, body := post(testkit.Alice, "customer", r.target, r.body); code != http.StatusBadRequest {
+			t.Fatalf("caller-sent %s %s: %d %s", r.target, r.body, code, body)
 		}
 	}
-	if r := testkit.Seat(t, conn, 1); r.HeldBy != "" {
-		t.Fatalf("a refused request held the seat: %+v", r)
-	}
-	for _, cookie := range []string{"", "abc!", strings.Repeat("x", 129)} {
-		rec := post(cookie, "/api/holds", `{"seat_id": 1}`)
-		var body httpx.ErrorBody
-		_ = json.Unmarshal(rec.Body.Bytes(), &body)
-		if rec.Code != hold_seat.F8.Status || body.Error.ID != hold_seat.F8.ID {
-			t.Fatalf("cookie %q: %d %s", cookie, rec.Code, rec.Body)
+	for _, c := range []struct {
+		user int64
+		role string
+		code int
+		id   string
+	}{
+		{0, "", http.StatusUnauthorized, "unauthorized"},
+		{testkit.Olga, "organizer", http.StatusForbidden, "forbidden"},
+		{testkit.Ada, "admin", http.StatusForbidden, "forbidden"},
+		{testkit.Alice, "superuser", http.StatusUnauthorized, "unauthorized"}, // a role AppRoles does not declare: not signed in
+	} {
+		if code, eid, body := post(c.user, c.role, "/api/holds", `{"seat_id": 1}`); code != c.code || eid != c.id {
+			t.Fatalf("%d %s: %d %s, want %d %s", c.user, c.role, code, body, c.code, c.id)
 		}
 	}
-	rec := post(testkit.Alice, "/api/holds", `{"seat_id": 1}`)
+	if r := testkit.Seat(t, conn, 1); r != (testkit.Row{}) {
+		t.Fatalf("a refused request wrote: %+v", r)
+	}
+
+	code, _, body := post(testkit.Alice, "customer", "/api/holds", `{"seat_id": 1}`)
 	var out hold_seat.Output
-	if rec.Code != http.StatusCreated || json.Unmarshal(rec.Body.Bytes(), &out) != nil ||
+	if code != http.StatusCreated || json.Unmarshal(body, &out) != nil ||
 		out != (hold_seat.Output{SeatID: 1, HeldAt: t0, ExpiresAt: t0 + 600, Now: t0}) {
-		t.Fatalf("hold: %d %s", rec.Code, rec.Body)
+		t.Fatalf("hold: %d %s", code, body)
 	}
-	// Another visitor's session: F1 with its id.
-	rec = post(testkit.Bob, "/api/holds", `{"seat_id": 1}`)
-	var body httpx.ErrorBody
-	_ = json.Unmarshal(rec.Body.Bytes(), &body)
-	if rec.Code != hold_seat.F1.Status || body.Error.ID != hold_seat.F1.ID {
-		t.Fatalf("second visitor: %d %s", rec.Code, rec.Body)
+	if r := testkit.Seat(t, conn, 1); r.HeldBy != testkit.Alice {
+		t.Fatalf("held by %d, want the signed-in user", r.HeldBy)
+	}
+	// Another customer: F1 with its id.
+	if code, eid, body := post(testkit.Bob, "customer", "/api/holds", `{"seat_id": 1}`); code != hold_seat.F1.Status || eid != hold_seat.F1.ID {
+		t.Fatalf("second customer: %d %s", code, body)
 	}
 }

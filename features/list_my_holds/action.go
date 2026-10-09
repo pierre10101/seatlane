@@ -9,6 +9,7 @@ import (
 
 	"github.com/pierre10101/go-ai-bridge/runtime/assert"
 	"github.com/pierre10101/go-ai-bridge/runtime/failure"
+	"github.com/pierre10101/go-ai-bridge/runtime/httpx"
 	"github.com/pierre10101/go-ai-bridge/runtime/page"
 	"github.com/pierre10101/seatlane/features/list_my_holds/db"
 	"github.com/pierre10101/seatlane/internal/domain"
@@ -17,13 +18,17 @@ import (
 // Route is the HTTP contract.
 const Route = "GET /api/events/{id}/holds"
 
-// Input: path and query; session and now are set by the server.
+// Roles: only a signed-in customer may call it (401 if not signed in, 403
+// for another role), checked by httpx.Bind before Handle runs.
+var Roles = httpx.Roles("customer")
+
+// Input: path and query; the signed-in user and now are set by the server.
 type Input struct {
-	EventID int64  `json:"event_id" path:"id"`
-	After   int64  `json:"after" query:"after"`
-	Limit   int64  `json:"limit" query:"limit"`
-	Session string `json:"session" server:"session"`
-	Now     int64  `json:"now" clock:"now"`
+	EventID int64 `json:"event_id" path:"id"`
+	After   int64 `json:"after" query:"after"`
+	Limit   int64 `json:"limit" query:"limit"`
+	User    int64 `json:"user" server:"user"`
+	Now     int64 `json:"now" clock:"now"`
 }
 
 // Output: one page of the viewer's holds, and the server's clock for the countdown.
@@ -35,12 +40,11 @@ type Output struct {
 
 // Failure cases. IDs match intent.md, docs/failures.md and checks/.
 var (
-	F8  = failure.New("F8", http.StatusUnauthorized, "session is required")
 	F11 = failure.New("F11", http.StatusBadRequest, "page limit is out of range")
 	F12 = failure.New("F12", http.StatusBadRequest, "page cursor must be greater than zero")
 )
 
-// Action lists one session's holds.
+// Action lists one user's holds.
 type Action struct {
 	q *db.Queries
 }
@@ -48,11 +52,8 @@ type Action struct {
 // New wires the action.
 func New(q *db.Queries) *Action { return &Action{q: q} }
 
-// Handle reads only the seats this session holds.
+// Handle reads only the seats this user holds.
 func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
-	if in.Session == "" {
-		return Output{}, F8
-	}
 	if !page.IsPageLimit(in.Limit) {
 		return Output{}, F11
 	}
@@ -60,7 +61,7 @@ func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
 		return Output{}, F12
 	}
 
-	rows, err := a.q.ListMyHolds(ctx, db.ListMyHoldsParams{EventID: in.EventID, Session: in.Session, After: in.After, Limit: in.Limit})
+	rows, err := a.q.ListMyHolds(ctx, db.ListMyHoldsParams{EventID: in.EventID, User: in.User, After: in.After, Limit: in.Limit})
 	if err != nil {
 		return Output{}, err
 	}

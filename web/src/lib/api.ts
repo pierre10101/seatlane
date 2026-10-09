@@ -1,6 +1,8 @@
-// The API client. It only moves JSON: every seat and hold rule lives in the
-// Go slices. The session is the HttpOnly cookie `bridge_session`, which the
-// server sets; this code never reads or sends it.
+// The API client. It only moves JSON: every seat, hold and sign-in rule
+// lives on the server. The sign-in session is the HttpOnly cookie
+// `seatlane_auth`, which the server sets; this code never reads or sends it.
+// The one cookie it reads is `seatlane_csrf`, which it echoes in the
+// X-CSRF-Token header on every state-changing request (CSRF protection).
 
 export type Money = { cents: number; currency: string }
 
@@ -37,9 +39,12 @@ export type HoldAnswer = { seat_id: number; held_at: number; expires_at: number;
 export type ConfirmAnswer = { seat_id: number; sold_at: number; now: number }
 export type ConfirmAllAnswer = { confirmed: number; sold_at: number; now: number }
 export type ReleaseAnswer = { seat_id: number; released_at: number; now: number }
+export type Role = 'customer' | 'organizer' | 'admin'
+export type Account = { user_id: number; email: string; role: Role }
 
-/** An error answer. `id` is the server's `error.id` (F1..F13, bad_request,
- * internal) or `network` when the server could not be reached. The UI maps
+/** An error answer. `id` is the server's `error.id` (F1..F19, bad_request,
+ * unauthorized, forbidden, internal) or `network` when the server could not
+ * be reached. The UI maps
  * the id to copy; it never reads the server's message. */
 export class ApiError extends Error {
   readonly id: string
@@ -51,14 +56,18 @@ export class ApiError extends Error {
   }
 }
 
+function csrfToken(): string {
+  const m = document.cookie.match(/(?:^|;\s*)seatlane_csrf=([^;]*)/)
+  return m ? decodeURIComponent(m[1]) : ''
+}
+
 async function request<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
   let res: Response
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  if (init.body) headers['Content-Type'] = 'application/json'
+  if (init.method && init.method !== 'GET') headers['X-CSRF-Token'] = csrfToken()
   try {
-    res = await fetch(path, {
-      credentials: 'same-origin',
-      ...init,
-      headers: init.body ? { 'Content-Type': 'application/json', Accept: 'application/json' } : { Accept: 'application/json' },
-    })
+    res = await fetch(path, { credentials: 'same-origin', ...init, headers })
   } catch {
     throw new ApiError('network', 0)
   }
@@ -70,11 +79,10 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
   } catch {
     // not JSON: keep "internal"
   }
-  // F8: the request had no session cookie. The server set one on this very
-  // answer (session.Issue), so one retry carries it. This happens when the
-  // page did not come from the Go server (the Vite dev server) or the cookie
-  // was cleared after the page loaded.
-  if (id === 'F8' && !retried) return request<T>(path, init, true)
+  // F19: the CSRF token was missing or stale (the page did not come from the
+  // Go server, or the server restarted with a new key). The server set a
+  // fresh token on this very answer, so one retry carries it.
+  if (id === 'F19' && !retried) return request<T>(path, init, true)
   throw new ApiError(id, res.status)
 }
 
@@ -123,6 +131,12 @@ export const api = {
     } while (after)
     return { holds, now }
   },
+
+  /** Who is signed in; ApiError "unauthorized" when nobody is. */
+  me: () => request<Account>('/api/me'),
+  signUp: (email: string, password: string) => request<Account>('/api/sign-up', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  signIn: (email: string, password: string) => request<Account>('/api/sign-in', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  signOut: () => request<{ signed_out: boolean }>('/api/sign-out', { method: 'POST' }),
 
   hold: (seatId: number) => request<HoldAnswer>('/api/holds', { method: 'POST', body: JSON.stringify({ seat_id: seatId }) }),
   confirm: (seatId: number) => request<ConfirmAnswer>('/api/holds/confirm', { method: 'POST', body: JSON.stringify({ seat_id: seatId }) }),

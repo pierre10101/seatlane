@@ -8,16 +8,21 @@ import { StateCard } from '@/components/states'
 import { EventsPage } from '@/pages/events-page'
 import { EventPage } from '@/pages/event-page'
 import { ThemeProvider } from '@/hooks/use-theme'
+import { AuthProvider } from '@/hooks/use-auth'
+import { AuthPage } from '@/pages/auth-page'
 
 export default function App() {
   return (
     <ThemeProvider>
       <TooltipProvider delayDuration={200}>
         <BrowserRouter>
+          <AuthProvider>
           <SiteHeader />
           <Routes>
             <Route path="/" element={<EventsPage />} />
             <Route path="/events/:id" element={<EventPage />} />
+            <Route path="/sign-in" element={<AuthPage key="sign-in" mode="sign-in" />} />
+            <Route path="/sign-up" element={<AuthPage key="sign-up" mode="sign-up" />} />
             <Route
               path="*"
               element={
@@ -33,6 +38,7 @@ export default function App() {
             Seatlane · every seat rule runs on the server, reviewed in plain English.
           </footer>
           <Toaster position="top-center" richColors={false} closeButton />
+          </AuthProvider>
         </BrowserRouter>
       </TooltipProvider>
     </ThemeProvider>

@@ -12,19 +12,19 @@ import (
 const confirmSeat = `-- name: ConfirmSeat :execrows
 UPDATE seats
 SET sold_to = ?1, sold_at = ?2
-WHERE id = ?3 AND held_by = ?1 AND sold_to = '' AND expires_at > ?2
+WHERE id = ?3 AND held_by = ?1 AND sold_to = 0 AND expires_at > ?2
 `
 
 type ConfirmSeatParams struct {
-	Session string
-	Now     int64
-	SeatID  int64
+	User   int64
+	Now    int64
+	SeatID int64
 }
 
 // One statement sells the seat only if, at that moment, it is not sold, this
-// session holds it and the hold has not expired (Q6 + S10).
+// user holds it and the hold has not expired (Q6 + S10).
 func (q *Queries) ConfirmSeat(ctx context.Context, arg ConfirmSeatParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, confirmSeat, arg.Session, arg.Now, arg.SeatID)
+	result, err := q.db.ExecContext(ctx, confirmSeat, arg.User, arg.Now, arg.SeatID)
 	if err != nil {
 		return 0, err
 	}

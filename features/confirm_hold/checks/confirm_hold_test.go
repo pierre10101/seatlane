@@ -41,13 +41,13 @@ func run[I, O any](handle func(context.Context, I) (O, error), in I) (O, error) 
 	return txn.Run(context.Background(), func(ctx context.Context) (O, error) { return handle(ctx, in) })
 }
 
-func (w *world) doConfirm(seat int64, session string, now int64) (confirm_hold.Output, error) {
-	return run(w.confirm.Handle, confirm_hold.Input{SeatID: seat, Session: session, Now: now})
+func (w *world) doConfirm(seat int64, user int64, now int64) (confirm_hold.Output, error) {
+	return run(w.confirm.Handle, confirm_hold.Input{SeatID: seat, User: user, Now: now})
 }
 
-func (w *world) doHold(seat int64, session string, now int64) {
+func (w *world) doHold(seat int64, user int64, now int64) {
 	w.t.Helper()
-	if _, err := run(w.hold.Handle, hold_seat.Input{SeatID: seat, Session: session, Now: now}); err != nil {
+	if _, err := run(w.hold.Handle, hold_seat.Input{SeatID: seat, User: user, Now: now}); err != nil {
 		w.t.Fatalf("hold: %v", err)
 	}
 }
@@ -92,7 +92,7 @@ func TestF2_HoldExpired(t *testing.T) {
 func TestF3_ConfirmAfterRelease(t *testing.T) {
 	w := newWorld(t)
 	w.doHold(1, testkit.Alice, t0)
-	if _, err := run(w.release.Handle, release_hold.Input{SeatID: 1, Session: testkit.Alice, Now: t0 + 10}); err != nil {
+	if _, err := run(w.release.Handle, release_hold.Input{SeatID: 1, User: testkit.Alice, Now: t0 + 10}); err != nil {
 		t.Fatal(err)
 	}
 	w.expectUnchanged(1, func() {
@@ -153,13 +153,4 @@ func TestF7_NoSuchSeat(t *testing.T) {
 	if _, err := w.doConfirm(99, testkit.Alice, t0); !errors.Is(err, confirm_hold.F7) {
 		t.Fatalf("want F7, got %v", err)
 	}
-}
-
-func TestF8_SessionRequired(t *testing.T) {
-	w := newWorld(t)
-	w.expectUnchanged(1, func() {
-		if _, err := w.doConfirm(1, "", t0); !errors.Is(err, confirm_hold.F8) {
-			t.Fatalf("want F8, got %v", err)
-		}
-	})
 }

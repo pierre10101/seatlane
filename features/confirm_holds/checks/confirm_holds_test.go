@@ -55,14 +55,14 @@ func run[I, O any](handle func(context.Context, I) (O, error), in I) (O, error) 
 	return txn.Run(context.Background(), func(ctx context.Context) (O, error) { return handle(ctx, in) })
 }
 
-func (w *world) doConfirm(session string, now int64, ids ...int64) (confirm_holds.Output, error) {
-	return run(w.confirm.Handle, confirm_holds.Input{SeatIDs: ids, Session: session, Now: now})
+func (w *world) doConfirm(user int64, now int64, ids ...int64) (confirm_holds.Output, error) {
+	return run(w.confirm.Handle, confirm_holds.Input{SeatIDs: ids, User: user, Now: now})
 }
 
-func (w *world) doHold(session string, now int64, ids ...int64) {
+func (w *world) doHold(user int64, now int64, ids ...int64) {
 	w.t.Helper()
 	for _, id := range ids {
-		if _, err := run(w.hold.Handle, hold_seat.Input{SeatID: id, Session: session, Now: now}); err != nil {
+		if _, err := run(w.hold.Handle, hold_seat.Input{SeatID: id, User: user, Now: now}); err != nil {
 			w.t.Fatalf("hold %d: %v", id, err)
 		}
 	}
@@ -89,11 +89,11 @@ func (w *world) expectNothingWritten(fn func()) {
 	}
 }
 
-func (w *world) expectSold(session string, at int64, ids ...int64) {
+func (w *world) expectSold(user int64, at int64, ids ...int64) {
 	w.t.Helper()
 	for _, id := range ids {
-		if r := testkit.Seat(w.t, w.conn, id); r.SoldTo != session || r.SoldAt != at {
-			w.t.Fatalf("seat %d: %+v, want sold to %s at %d", id, r, session, at)
+		if r := testkit.Seat(w.t, w.conn, id); r.SoldTo != user || r.SoldAt != at {
+			w.t.Fatalf("seat %d: %+v, want sold to %d at %d", id, r, user, at)
 		}
 	}
 }
@@ -140,7 +140,7 @@ func TestF2_OneHoldExpiredNothingWritten(t *testing.T) {
 			}
 		})
 	}
-	if r := testkit.Seat(t, w.conn, 2); r.HeldBy != testkit.Alice || r.SoldTo != "" {
+	if r := testkit.Seat(t, w.conn, 2); r.HeldBy != testkit.Alice || r.SoldTo != 0 {
 		t.Fatalf("live hold lost: %+v", r)
 	}
 	if _, err := w.doConfirm(testkit.Alice, t0+599, 1, 2, 3); err != nil {
@@ -158,7 +158,7 @@ func TestExpiredHoldsReadBoundary(t *testing.T) {
 	w := newWorld(t)
 	w.doHold(testkit.Alice, t0, 1, 2, 3)
 	w.doHold(testkit.Bob, t0, 4)
-	if _, err := run(w.one.Handle, confirm_hold.Input{SeatID: 3, Session: testkit.Alice, Now: t0 + 1}); err != nil {
+	if _, err := run(w.one.Handle, confirm_hold.Input{SeatID: 3, User: testkit.Alice, Now: t0 + 1}); err != nil {
 		t.Fatal(err)
 	}
 	q := db.New(txn.DB(w.conn))
@@ -174,7 +174,7 @@ func TestExpiredHoldsReadBoundary(t *testing.T) {
 		{t0 + 3600, []int64{1, 4, 5}, 1},
 	} {
 		got, err := txn.Run(context.Background(), func(ctx context.Context) (int64, error) {
-			return q.CountExpiredHolds(ctx, db.CountExpiredHoldsParams{Session: testkit.Alice, Now: tc.now, SeatIds: tc.ids})
+			return q.CountExpiredHolds(ctx, db.CountExpiredHoldsParams{User: testkit.Alice, Now: tc.now, SeatIds: tc.ids})
 		})
 		if err != nil || got != tc.want {
 			t.Fatalf("now %+d ids %v: got %d (%v), want %d", tc.now-t0, tc.ids, got, err, tc.want)
@@ -183,7 +183,7 @@ func TestExpiredHoldsReadBoundary(t *testing.T) {
 }
 
 // F13, not F2: my hold expired and someone else then took the seat. The seat
-// is no longer held by this session, so the F2 read does not count it.
+// is no longer held by this user, so the F2 read does not count it.
 func TestF13_ExpiredThenTakenByOtherIsF13(t *testing.T) {
 	w := newWorld(t)
 	w.doHold(testkit.Alice, t0, 1, 5)
@@ -209,7 +209,7 @@ func TestF2_ExpiredAndForeignIsF2(t *testing.T) {
 	})
 }
 
-// F13: a listed seat this session does not hold: someone else's (live or
+// F13: a listed seat this customer does not hold: someone else's (live or
 // expired), released, never held, already sold to me, sold to someone else,
 // or no such seat. My other listed holds are rolled back: nothing is written.
 func TestF13_SeatNotMineRollsBackEverything(t *testing.T) {
@@ -223,19 +223,19 @@ func TestF13_SeatNotMineRollsBackEverything(t *testing.T) {
 		"never held":                  {func(w *world) {}, []int64{1, 2, 6}, t0 + 10},
 		"released": {func(w *world) {
 			w.doHold(testkit.Alice, t0, 5)
-			if _, err := run(w.release.Handle, release_hold.Input{SeatID: 5, Session: testkit.Alice, Now: t0 + 1}); err != nil {
+			if _, err := run(w.release.Handle, release_hold.Input{SeatID: 5, User: testkit.Alice, Now: t0 + 1}); err != nil {
 				t.Fatal(err)
 			}
 		}, []int64{5, 1}, t0 + 10},
 		"already sold to me": {func(w *world) {
 			w.doHold(testkit.Alice, t0, 5)
-			if _, err := run(w.one.Handle, confirm_hold.Input{SeatID: 5, Session: testkit.Alice, Now: t0 + 1}); err != nil {
+			if _, err := run(w.one.Handle, confirm_hold.Input{SeatID: 5, User: testkit.Alice, Now: t0 + 1}); err != nil {
 				t.Fatal(err)
 			}
 		}, []int64{1, 2, 5}, t0 + 10},
 		"sold to someone else": {func(w *world) {
 			w.doHold(testkit.Bob, t0, 5)
-			if _, err := run(w.one.Handle, confirm_hold.Input{SeatID: 5, Session: testkit.Bob, Now: t0 + 1}); err != nil {
+			if _, err := run(w.one.Handle, confirm_hold.Input{SeatID: 5, User: testkit.Bob, Now: t0 + 1}); err != nil {
 				t.Fatal(err)
 			}
 		}, []int64{1, 5}, t0 + 10},
@@ -262,16 +262,6 @@ func TestF13_RepeatedIDCalledDirectly(t *testing.T) {
 	w.expectNothingWritten(func() {
 		if _, err := w.doConfirm(testkit.Alice, t0+1, 1, 1); !errors.Is(err, confirm_holds.F13) {
 			t.Fatalf("want F13, got %v", err)
-		}
-	})
-}
-
-func TestF8_SessionRequired(t *testing.T) {
-	w := newWorld(t)
-	w.doHold(testkit.Alice, t0, 1)
-	w.expectNothingWritten(func() {
-		if _, err := w.doConfirm("", t0+1, 1); !errors.Is(err, confirm_holds.F8) {
-			t.Fatalf("want F8, got %v", err)
 		}
 	})
 }
@@ -313,7 +303,7 @@ func TestF13_ConcurrentConfirmsSellOnce(t *testing.T) {
 			case n:
 				_, errs[i] = worlds[i].doConfirm(testkit.Bob, t0+5, 4, 5)
 			case n + 1:
-				_, errs[i] = run(worlds[i].one.Handle, confirm_hold.Input{SeatID: 2, Session: testkit.Alice, Now: t0 + 5})
+				_, errs[i] = run(worlds[i].one.Handle, confirm_hold.Input{SeatID: 2, User: testkit.Alice, Now: t0 + 5})
 			default:
 				_, errs[i] = worlds[i].doConfirm(testkit.Alice, t0+5, 1, 2, 3)
 			}
@@ -340,7 +330,7 @@ func TestF13_ConcurrentConfirmsSellOnce(t *testing.T) {
 	case groups == 0 && single == nil:
 		w.expectSold(testkit.Alice, t0+5, 2)
 		for _, id := range []int64{1, 3} {
-			if r := testkit.Seat(t, w.conn, id); r.SoldTo != "" || r.HeldBy != testkit.Alice {
+			if r := testkit.Seat(t, w.conn, id); r.SoldTo != 0 || r.HeldBy != testkit.Alice {
 				t.Fatalf("seat %d: %+v, want still held and unsold", id, r)
 			}
 		}

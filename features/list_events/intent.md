@@ -3,6 +3,9 @@
 ## Why
 The home page lists the events on sale, newest first, as cards.
 
+## Who
+Anyone, signed in or not (`httpx.Public`).
+
 ## Inputs
 - `after`, `limit` (query) — keyset paging over event ids, highest first
   (`limit` 1..100, default 20).

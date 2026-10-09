@@ -8,17 +8,22 @@ import (
 
 	"github.com/pierre10101/go-ai-bridge/runtime/assert"
 	"github.com/pierre10101/go-ai-bridge/runtime/failure"
+	"github.com/pierre10101/go-ai-bridge/runtime/httpx"
 	"github.com/pierre10101/seatlane/features/confirm_hold/db"
 )
 
 // Route is the HTTP contract.
 const Route = "POST /api/holds/confirm"
 
-// Input: the seat; session and now are set by the server.
+// Roles: only a signed-in customer may call it (401 if not signed in, 403
+// for another role), checked by httpx.Bind before Handle runs.
+var Roles = httpx.Roles("customer")
+
+// Input: the seat; the signed-in user and now are set by the server.
 type Input struct {
-	SeatID  int64  `json:"seat_id"`
-	Session string `json:"session" server:"session"`
-	Now     int64  `json:"now" clock:"now"`
+	SeatID int64 `json:"seat_id"`
+	User   int64 `json:"user" server:"user"`
+	Now    int64 `json:"now" clock:"now"`
 }
 
 // Output: the sale, and the server's clock.
@@ -36,10 +41,9 @@ var (
 	F5 = failure.New("F5", http.StatusConflict, "seat is already confirmed")
 	F6 = failure.New("F6", http.StatusConflict, "seat is already sold")
 	F7 = failure.New("F7", http.StatusNotFound, "seat does not exist")
-	F8 = failure.New("F8", http.StatusUnauthorized, "session is required")
 )
 
-// Action sells a held seat to the session that holds it.
+// Action sells a held seat to the user who holds it.
 type Action struct {
 	q *db.Queries
 }
@@ -50,11 +54,7 @@ func New(q *db.Queries) *Action { return &Action{q: q} }
 // Handle sells the seat with one conditional UPDATE, then explains a claim
 // that changed nothing with reads made after it.
 func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
-	if in.Session == "" {
-		return Output{}, F8
-	}
-
-	confirmed, err := a.q.ConfirmSeat(ctx, db.ConfirmSeatParams{Session: in.Session, Now: in.Now, SeatID: in.SeatID})
+	confirmed, err := a.q.ConfirmSeat(ctx, db.ConfirmSeatParams{User: in.User, Now: in.Now, SeatID: in.SeatID})
 	if err != nil {
 		return Output{}, err
 	}
@@ -71,16 +71,16 @@ func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	if confirmed == 0 && seat.SoldTo == in.Session {
+	if confirmed == 0 && seat.SoldTo == in.User {
 		return Output{}, F5
 	}
-	if confirmed == 0 && seat.SoldTo != "" {
+	if confirmed == 0 && seat.SoldTo != 0 {
 		return Output{}, F6
 	}
-	if confirmed == 0 && seat.HeldBy == "" {
+	if confirmed == 0 && seat.HeldBy == 0 {
 		return Output{}, F3
 	}
-	if confirmed == 0 && seat.HeldBy == in.Session {
+	if confirmed == 0 && seat.HeldBy == in.User {
 		return Output{}, F2
 	}
 	if confirmed != 1 {
@@ -88,7 +88,7 @@ func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
 	}
 
 	out := Output{SeatID: in.SeatID, SoldAt: seat.SoldAt, Now: in.Now}
-	assert.Post(seat.SoldTo == in.Session, "the seat is sold to the requester")
+	assert.Post(seat.SoldTo == in.User, "the seat is sold to the requester")
 	assert.Post(out.SoldAt == in.Now, "the sale happened now")
 	return out, nil
 }

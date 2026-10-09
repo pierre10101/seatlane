@@ -1,7 +1,7 @@
 package domain
 
 // SeatView is one seat on the seat map, with its state for the viewing
-// session. Exactly one of the five state flags is true. It has no hold
+// user. Exactly one of the five state flags is true. It has no hold
 // expiry: the seat map never tells anyone when a hold runs out; a visitor's
 // own hold times come from MyHold (list_my_holds).
 //
@@ -20,11 +20,11 @@ type SeatView struct {
 	SoldToOther bool   `json:"sold_to_other"`
 }
 
-// MyHold is one seat the viewing session holds, with when its hold ends.
+// MyHold is one seat the signed-in user holds, with when its hold ends.
 // Active is false once expires_at is no later than now (the seat is then
-// free for anyone, until this session holds it again).
+// free for anyone, until this user holds it again).
 //
-// bridge-en: a session hold
+// bridge-en: a hold of mine
 type MyHold struct {
 	SeatID    int64 `json:"seat_id"`
 	HeldAt    int64 `json:"held_at"`
@@ -38,27 +38,28 @@ func IsActiveHold(expiresAt, now int64) bool {
 }
 
 // IsAvailable: not sold, and nobody holds it or the hold has expired.
-func IsAvailable(heldBy string, expiresAt int64, soldTo string, now int64) bool {
-	return soldTo == "" && (heldBy == "" || expiresAt <= now)
+func IsAvailable(heldBy, expiresAt, soldTo, now int64) bool {
+	return soldTo == 0 && (heldBy == 0 || expiresAt <= now)
 }
 
-// IsHeldBy: not sold, held by session, and the hold has not expired.
-// Sessions are never empty (F8), so held_by = session means somebody holds it.
-func IsHeldBy(heldBy string, expiresAt int64, soldTo, session string, now int64) bool {
-	return soldTo == "" && heldBy == session && expiresAt > now
+// IsHeldBy: not sold, held by the viewer (a signed-in user, from 1 up), and
+// the hold has not expired. A viewer who is not signed in (0) holds nothing.
+func IsHeldBy(heldBy, expiresAt, soldTo, viewer, now int64) bool {
+	return soldTo == 0 && heldBy != 0 && heldBy == viewer && expiresAt > now
 }
 
-// IsHeldByOther: not sold, held by another session, and the hold has not expired.
-func IsHeldByOther(heldBy string, expiresAt int64, soldTo, session string, now int64) bool {
-	return soldTo == "" && heldBy != "" && heldBy != session && expiresAt > now
+// IsHeldByOther: not sold, held by someone other than the viewer, and the
+// hold has not expired.
+func IsHeldByOther(heldBy, expiresAt, soldTo, viewer, now int64) bool {
+	return soldTo == 0 && heldBy != 0 && heldBy != viewer && expiresAt > now
 }
 
-// IsSoldTo: sold to session (sessions are never empty, so it is sold).
-func IsSoldTo(soldTo, session string) bool {
-	return soldTo == session
+// IsSoldTo: sold to the viewer (a viewer who is not signed in, 0, bought nothing).
+func IsSoldTo(soldTo, viewer int64) bool {
+	return soldTo != 0 && soldTo == viewer
 }
 
-// IsSoldToOther: sold to another session.
-func IsSoldToOther(soldTo, session string) bool {
-	return soldTo != "" && soldTo != session
+// IsSoldToOther: sold to someone other than the viewer.
+func IsSoldToOther(soldTo, viewer int64) bool {
+	return soldTo != 0 && soldTo != viewer
 }

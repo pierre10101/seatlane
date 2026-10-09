@@ -27,8 +27,8 @@ SELECT held_by, sold_to, sold_at FROM seats WHERE id = ?
 `
 
 type SeatHoldRow struct {
-	HeldBy string
-	SoldTo string
+	HeldBy int64
+	SoldTo int64
 	SoldAt int64
 }
 

@@ -49,3 +49,18 @@ sql:
       go:
         package: "db"
         out: "features/confirm_holds/db"
+  - engine: "sqlite"
+    schema: "schema.sql"
+    queries: "features/me/queries"
+    gen:
+      go:
+        package: "db"
+        out: "features/me/db"
+  # Accounts and sign-in: app code outside bridge-en (internal/auth).
+  - engine: "sqlite"
+    schema: "schema.sql"
+    queries: "internal/auth/queries"
+    gen:
+      go:
+        package: "db"
+        out: "internal/auth/db"

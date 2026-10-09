@@ -5,9 +5,14 @@ package testkit
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/pierre10101/go-ai-bridge/runtime/httpx"
 	"github.com/pierre10101/go-ai-bridge/runtime/store"
 	"github.com/pierre10101/seatlane"
 )
@@ -15,12 +20,41 @@ import (
 // T0 is any time: checks pass the current time in (T1).
 const T0 int64 = 1_800_000_000
 
-// Sessions used across checks: text ids like the ones session.Mint issues
-// (the bridge_session cookie). The empty text is no session (F8).
+// Signed-in users across checks: account ids, as the server sets the
+// `user` input (`server:"user"`). Alice and Bob are customers; Olga is an
+// organizer and Ada an admin (for the 403 checks). 0 is nobody.
 const (
-	Alice = "alice7qkz2m4xw3vb6r5nd0hjy"
-	Bob   = "bob8tcl1pf6es9ga2wu4ki3oxq"
+	Alice int64 = 1
+	Bob   int64 = 2
+	Olga  int64 = 3
+	Ada   int64 = 4
 )
+
+// AppRoles mirrors cmd/server's AppRoles for checks that serve a route
+// through httpx.Identify (cmd/server's TestAppRolesMatchTestkit keeps the two
+// lists equal).
+var AppRoles = httpx.AppRoles("customer", "organizer", "admin")
+
+// AsHeader carries the test sign-in: "<user id>:<role>".
+const AsHeader = "X-Test-As"
+
+// Serve puts h behind httpx.Identify with a test sign-in hook that reads
+// AsHeader, the way cmd/server puts the API behind the app's real hook.
+// Requests without the header are not signed in.
+func Serve(h http.Handler) http.Handler {
+	return httpx.Identify(AppRoles, func(r *http.Request) (string, string, bool) {
+		user, role, ok := strings.Cut(r.Header.Get(AsHeader), ":")
+		return user, role, ok
+	}, h)
+}
+
+// As signs req in as user with role ("" user: not signed in).
+func As(req *http.Request, user, role string) *http.Request {
+	if user != "" {
+		req.Header.Set(AsHeader, user+":"+role)
+	}
+	return req
+}
 
 // Open returns a fresh file-backed database (in t.TempDir) with one event
 // (id 1) and seats 1..n, all free, priced 45000 cents.
@@ -48,11 +82,11 @@ func Exec(t *testing.T, conn *sql.DB, query string, args ...any) {
 	}
 }
 
-// Row is a seat's stored state. HeldBy and SoldTo are ” for nobody.
+// Row is a seat's stored state. HeldBy and SoldTo are 0 for nobody.
 type Row struct {
-	HeldBy            string
+	HeldBy            int64
 	HeldAt, ExpiresAt int64
-	SoldTo            string
+	SoldTo            int64
 	SoldAt            int64
 }
 
@@ -65,4 +99,20 @@ func Seat(t *testing.T, conn *sql.DB, id int64) Row {
 		t.Fatal(err)
 	}
 	return r
+}
+
+// Do sends one request to h, signed in as user with role ("" user: not
+// signed in), and returns the answer.
+func Do(h http.Handler, method, target, body, user, role string) *httptest.ResponseRecorder {
+	req := As(httptest.NewRequest(method, target, strings.NewReader(body)), user, role)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+// ErrorID is the answer's error.id ("" when it is not an error answer).
+func ErrorID(rec *httptest.ResponseRecorder) string {
+	var body httpx.ErrorBody
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	return body.Error.ID
 }
