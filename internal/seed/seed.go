@@ -28,7 +28,7 @@ var Events = []Event{
 	{
 		Name: "Nocturnes by Candlelight", Venue: "Artscape Opera House", City: "Cape Town",
 		Tagline:  "Chopin and Satie by candlelight with the Cape Town Philharmonic strings.",
-		StartsAt: 1794596400, // 2026-11-14 19:00 SAST
+		StartsAt: 1794675600, // 2026-11-14 19:00 SAST
 		Sections: []Section{
 			{"Stalls", []string{"A", "B", "C", "D", "E", "F"}, 16, 65000},
 			{"Dress Circle", []string{"G", "H", "J", "K"}, 14, 48000},
@@ -38,7 +38,7 @@ var Events = []Event{
 	{
 		Name: "Highveld Jazz Nights", Venue: "Joburg Theatre, Mandela Stage", City: "Johannesburg",
 		Tagline:  "A big-band evening of township jazz and swing standards.",
-		StartsAt: 1795633200, // 2026-11-26 20:00 SAST
+		StartsAt: 1795716000, // 2026-11-26 20:00 SAST
 		Sections: []Section{
 			{"Front Stalls", []string{"A", "B", "C", "D"}, 18, 55000},
 			{"Rear Stalls", []string{"E", "F", "G", "H", "J"}, 18, 42000},
@@ -48,7 +48,7 @@ var Events = []Event{
 	{
 		Name: "The Long Table: A Comedy Special", Venue: "Durban Playhouse, Drama Theatre", City: "Durban",
 		Tagline:  "Five comics, one dinner table and absolutely no seating plan. Except this one.",
-		StartsAt: 1796929200, // 2026-12-11 20:00 SAST
+		StartsAt: 1797012000, // 2026-12-11 20:00 SAST
 		Sections: []Section{
 			{"Orchestra", []string{"A", "B", "C", "D", "E"}, 12, 38000},
 			{"Mezzanine", []string{"F", "G", "H"}, 10, 26000},
