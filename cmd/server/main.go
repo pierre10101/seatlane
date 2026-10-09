@@ -2,19 +2,24 @@
 // the web app from web/dist.
 //
 //	go run ./cmd/server -db seatlane.db -addr :8080 -web web/dist
+//
+// With -seed-dev-accounts (and SEATLANE_DEV=1; `make seed`) it creates the
+// dev accounts, prints their password and exits instead of serving.
 package main
 
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
-	"github.com/pierre10101/go-ai-bridge/runtime/store"
-	"github.com/pierre10101/seatlane"
 	"github.com/pierre10101/seatlane/internal/auth"
+	"github.com/pierre10101/seatlane/internal/dbopen"
 	"github.com/pierre10101/seatlane/internal/devclock"
 	"github.com/pierre10101/seatlane/internal/seed"
 	"github.com/pierre10101/seatlane/internal/web"
@@ -26,10 +31,25 @@ func main() {
 	dist := flag.String("web", "web/dist", "built web app to serve (skipped when missing)")
 	doSeed := flag.Bool("seed", true, "seed demo events into an empty database")
 	devClock := flag.Bool("dev-clock", false, "enable POST /__dev/advance?seconds=N to move the server clock forward (development only)")
+	seedDev := flag.Bool("seed-dev-accounts", false, "create the dev accounts (organizer@example.test, admin@example.test), print their password and exit; refuses unless SEATLANE_DEV=1 (local development only)")
 	flag.Parse()
 
+	var devPassword string
+	if *seedDev {
+		p, err := seed.DevPassword(os.Getenv)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		devPassword = p
+	}
+
 	ctx := context.Background()
-	db, err := store.Open(ctx, *path, seatlane.Schema)
+	db, err := dbopen.Open(ctx, *path)
+	if out := (*dbopen.OutdatedError)(nil); errors.As(err, &out) {
+		fmt.Fprintf(os.Stderr, "%s\n  (%s; the schema changed and there are no migrations, so start from a fresh database)\n", out, out.Reason)
+		os.Exit(1)
+	}
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -38,6 +58,16 @@ func main() {
 		if err := seed.IfEmpty(ctx, db); err != nil {
 			log.Fatal(err)
 		}
+	}
+	if *seedDev {
+		if err := seed.LoadDevAccounts(ctx, db, devPassword, auth.New(db, nil).BcryptCost, time.Now().Unix()); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("Dev accounts in %s (local use only; running this again resets their password):\n", *path)
+		for _, a := range seed.DevAccounts {
+			fmt.Printf("  %-24s %-10s password: %s\n", a.Email, a.Role, devPassword)
+		}
+		return
 	}
 
 	accounts := auth.New(db, csrfKey())

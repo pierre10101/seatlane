@@ -2,6 +2,7 @@
 #
 #   make dev     Go API (with the dev clock) on :8080 + Vite on :5173 (proxies /api)
 #   make build   web/dist + bin/seatlane (the server serves web/dist)
+#   make seed    dev accounts organizer@example.test + admin@example.test in $(DB) (prints the password)
 #   make check   bridge-en -check: go.mod pin, refusals, golden .en, F-ID cross-checks
 #   make test    go test ./...
 
@@ -10,7 +11,7 @@ BRIDGE_EN ?= bridge-en
 DB        ?= seatlane.db
 BRIDGE_VERSION = $(shell $(GO) list -m -f '{{.Version}}' github.com/pierre10101/go-ai-bridge)
 
-.PHONY: dev build run check test generate tools web-install clean
+.PHONY: dev build run seed check test generate tools web-install clean
 
 dev: web/node_modules
 	@echo "API on http://localhost:8080 (dev clock: POST /__dev/advance?seconds=N), UI on http://localhost:5173"
@@ -24,6 +25,10 @@ build: web/node_modules
 
 run: build
 	./bin/seatlane -db $(DB) -web web/dist
+
+# Local development only: the server refuses -seed-dev-accounts without SEATLANE_DEV=1.
+seed:
+	SEATLANE_DEV=1 $(GO) run ./cmd/server -db $(DB) -seed-dev-accounts
 
 check:
 	$(BRIDGE_EN) -check features/*/

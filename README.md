@@ -156,43 +156,158 @@ Agents (and people) changing the app follow [AGENTS.md](AGENTS.md), written
 by `bridge-en init`; `CLAUDE.md`, `GEMINI.md`, `.cursor/rules/bridge-en.mdc`
 and `.github/copilot-instructions.md` point to it.
 
-## Run it
+## Run it locally
 
-Requirements: Go 1.24, Node 20.19+ (22 recommended), and for `make check` the
-bridge-en binary of the version `go.mod` pins (`make tools`).
+### Prerequisites
+
+- Go 1.24 and Node 20.19+ (22 recommended) with npm.
+- Optional: the `sqlite3` command-line shell to look inside the database
+  (`brew install sqlite`, `sudo apt install sqlite3`). The server itself
+  needs no SQLite install (it uses a pure Go driver).
+- Only for `make check`: the bridge-en binary of the version `go.mod` pins
+  (`make tools`).
+
+### Start it
+
+Either one server that serves the built web app:
 
 ```sh
-make tools   # go install github.com/pierre10101/go-ai-bridge/cmd/bridge-en@<pinned version>
-make dev     # Go API with the dev clock on :8080, Vite on http://localhost:5173 (proxies /api)
-make build   # web/dist + bin/seatlane
-make run     # build, then serve the API and web/dist on http://localhost:8080
-make check   # bridge-en -check features/*/
-make test    # go vet + go test ./...
+make build                                  # web/dist + bin/seatlane
+./bin/seatlane -db seatlane.db -web web/dist # or: make run (build, then this)
 ```
 
-The server seeds three demo events into an empty database. With `-dev-clock`
-(on in `make dev`), `POST /__dev/advance?seconds=N` moves the server clock
-forward, so you can watch a hold expire without waiting ten minutes:
+and open **http://localhost:8080**. Or, while working on the code, hot reload:
+
+```sh
+make dev   # Go API with the dev clock on :8080 + Vite on http://localhost:5173 (proxies /api)
+```
+
+and open http://localhost:5173 (port 8080 then answers the API only).
+
+The first run creates `seatlane.db` in the current directory (`-db` picks
+another file) with the schema and three demo events. Later runs reuse it.
+Other flags: `-addr :8080`, `-web ''` (API only), `-seed=false` (no demo
+events), `-dev-clock` (on in `make dev`): `POST /__dev/advance?seconds=N`
+moves the server clock forward, so you can watch a hold expire without
+waiting ten minutes:
 
 ```sh
 curl -X POST 'http://localhost:8080/__dev/advance?seconds=600'
 ```
 
-After changing `schema.sql` or a query, run `make generate` (sqlc + the
-`.en` files) and review the diff. A local database from before phase 1 (with
-TEXT session columns and no `users` table) must be deleted (`rm seatlane.db`);
-the server seeds a fresh one.
+Other targets: `make check` (bridge-en -check), `make test` (go vet + go
+test), `make generate` (after changing `schema.sql` or a query: sqlc and the
+`.en` files; review the diff).
 
-Everyone who signs up is a `customer`. To make an organizer or admin, change
-the role by hand:
+### Accounts: sign up, sign in, sign out
+
+There is **no default user**. Click **Sign up** (top right, or
+`/sign-up`), enter an email and a password of **10 to 72 bytes**, and you
+are signed in as a new **customer**. Every sign-up is a customer; there is
+no way to pick a role in the app. **Sign in** (`/sign-in`) takes the same
+email and password (the email is trimmed and lower-cased, so
+`Ana@Example.com ` and `ana@example.com` are one account); a wrong password
+and an unknown email get the same answer (F17). **Sign out** is in the
+header. A sign-in lasts 7 days.
+
+| Role | What it can do now |
+|---|---|
+| (signed out) | browse events and seat maps |
+| `customer` | browse; hold seats (10 minutes), confirm one or all held seats, release a hold, see own holds; `GET /api/me` |
+| `organizer` | browse and `GET /api/me`; holding and booking answer 403. No organizer screens yet. |
+| `admin` | the same as organizer for now. No admin screens yet. |
+
+To make an account an organizer or admin, change its role in the database
+(no restart needed; it applies from the next request):
 
 ```sh
 sqlite3 seatlane.db "UPDATE users SET role = 'organizer' WHERE email = 'olga@example.com';"
+sqlite3 seatlane.db "UPDATE users SET role = 'admin' WHERE email = 'olga@example.com';"
 ```
 
-Set `SEATLANE_CSRF_KEY` (64 hex characters, e.g. `openssl rand -hex 32`) to
-keep CSRF tokens valid across restarts. Without it, each start picks a random
-key, and the web app gets a new token when it next retries.
+### Dev accounts (local only)
+
+`make seed` creates (or resets) two accounts in `seatlane.db` with one
+password, printed once:
+
+```
+$ make seed
+Dev accounts in seatlane.db (local use only; running this again resets their password):
+  organizer@example.test   organizer  password: <16 random characters>
+  admin@example.test       admin      password: <16 random characters>
+```
+
+It runs `SEATLANE_DEV=1 go run ./cmd/server -db seatlane.db
+-seed-dev-accounts`, which seeds and exits without serving. The server
+refuses `-seed-dev-accounts` unless `SEATLANE_DEV=1` is set, so it cannot
+happen by accident against a real database; never set it in a deployment.
+`SEATLANE_DEV_PASSWORD=...` (10 to 72 bytes) picks the password instead of
+a random one; `make seed DB=other.db` seeds another file. Customers are not
+seeded: sign up in the app. `example.test` is a reserved domain, so these
+addresses reach nobody.
+
+### Look inside the database
+
+```sh
+sqlite3 seatlane.db
+sqlite> .tables
+auth_sessions     events            seats             sign_in_attempts  users
+sqlite> SELECT id, email, role FROM users;
+sqlite> SELECT id, row_label, seat_number, held_by, expires_at, sold_to FROM seats WHERE held_by != 0 OR sold_to != 0;
+sqlite> .quit
+```
+
+`held_by` and `sold_to` are a `users.id` (0 means nobody); times are unix
+seconds. Passwords are bcrypt hashes and `auth_sessions` stores only a
+SHA-256 of each session token, so neither can be read back. Prefer reading;
+edit only while trying things out.
+
+### Start over
+
+Stop the server, then `rm seatlane.db` (and `seatlane.db-journal` if there
+is one). The next start creates a fresh database with the demo events; all
+accounts, holds and bookings are gone (run `make seed` again for the dev
+accounts).
+
+### Limits and CSRF, in a nutshell
+
+- **Sign-in rate limit**, per 15-minute window: 5 failed sign-ins per IP +
+  email, and 20 failed sign-ins per IP across all emails. Past either, sign-in
+  answers F18 (429, "too many sign-in attempts") until the window ends; a
+  successful sign-in clears that email's count. While testing, wait, or `sqlite3 seatlane.db "DELETE FROM sign_in_attempts;"`.
+- **CSRF**: every `POST` under `/api/` must send the `seatlane_csrf` cookie's
+  value back in an `X-CSRF-Token` header. The web app does this for you;
+  with curl, keep a cookie jar (`-c`/`-b`) and
+  get the cookie first: any page sets it, and so does an F19 answer. A missing or stale token
+  is F19 (403); the web app fetches a fresh one and retries once. Set
+  `SEATLANE_CSRF_KEY` (64 hex characters, e.g. `openssl rand -hex 32`) to
+  keep tokens valid across restarts; without it each start picks a random
+  key.
+
+### Troubleshooting
+
+- **The server exits at startup with `seatlane.db was created by an older
+  version; delete it (rm seatlane.db) and restart`.** The file was made by an
+  earlier Seatlane whose tables differ (there are no migrations). Do what it
+  says: `rm seatlane.db` and start again. The server checks this at startup
+  (`internal/dbopen`: the schema version in `PRAGMA user_version` and every
+  table's columns against `schema.sql`), and the line after the message
+  names the difference, e.g. `seats.held_by is TEXT, want INTEGER`.
+- **Every request fails with `internal error: sql: Scan error on column index
+  6, name "held_by": converting driver.Value type string ("") to a int64:
+  invalid syntax`.** The same cause: a `seatlane.db` from before phase 1
+  (anonymous text sessions in `held_by`), run by a build without the startup
+  check. `rm seatlane.db` and restart.
+- **Sign-up says the password must be 10 to 72 bytes (F15)**: count bytes,
+  not characters; each accented letter or emoji is 2 to 4 bytes.
+- **"Email is already registered" (F16)**: sign in instead, or pick another
+  email (or reset the database).
+- **"Too many sign-in attempts" (F18)**: see the rate limit above.
+- **403 `forbidden` when holding a seat**: you are signed in as an organizer
+  or admin; only customers hold and book.
+- **403 F19 from curl**: send the CSRF header (above).
+- **`no web app at web/dist; serving the API only`**: run `make build` (or
+  use `make dev` and port 5173).
 
 ## API
 
@@ -216,10 +331,12 @@ Any route that is not for everyone can also answer 401 `unauthorized` or 403
 ## Layout
 
 ```
-cmd/server/        main (store.Open, seed, -dev-clock, CSRF) and routes.go (AppRoles, one httpx.Bind per slice, httpx.Identify)
+cmd/server/        main (dbopen.Open, seed, -seed-dev-accounts, -dev-clock, CSRF) and routes.go (AppRoles, one httpx.Bind per slice, httpx.Identify)
 features/<slice>/  intent.md, action.go, queries/, db/, checks/, <slice>.en
 internal/domain/   value objects and pure seat rules (rendered into the English)
 internal/auth/     accounts, bcrypt, sessions, the identity hook, CSRF, sign-in rate limit (app code + intent.md)
+internal/dbopen/   opens seatlane.db, refusing one an older version created (PRAGMA user_version + columns)
+internal/seed/     demo events and the dev-only accounts
 internal/web/      serves web/dist with the SPA fallback (and the CSRF cookie)
 web/               the React app
 docs/              failures.md, screenshots/
