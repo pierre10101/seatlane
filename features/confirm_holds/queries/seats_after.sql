@@ -1,10 +1,11 @@
--- Reads after the claim (W1 allows them), in the same transaction. The claim
--- has just sold every listed seat this session held with a live hold, so a
--- listed seat this session still holds and that is still unsold is one whose
--- hold has expired (expires_at is now or earlier): F2. The sold count is the
--- postcondition.
+-- Reads after the claim (W1 allows them), in the same transaction. A listed
+-- seat this session still holds, still unsold, whose hold ended no later than
+-- now has expired: F2. The read compares with the server-set now (Q1), before
+-- the IN list, which stays last (Q7). A listed seat whose expired hold was
+-- taken by another session is not held by this session, so it is not counted
+-- here and the action answers F13. The sold count is the postcondition.
 -- name: CountExpiredHolds :one
-SELECT COUNT(*) FROM seats WHERE held_by = sqlc.arg(session) AND sold_to = '' AND id IN (sqlc.slice(seat_ids));
+SELECT COUNT(*) FROM seats WHERE held_by = sqlc.arg(session) AND sold_to = '' AND expires_at <= sqlc.arg(now) AND id IN (sqlc.slice(seat_ids));
 
 -- name: CountSoldNow :one
 SELECT COUNT(*) FROM seats WHERE sold_to = sqlc.arg(session) AND sold_at = sqlc.arg(now) AND id IN (sqlc.slice(seat_ids));

@@ -11,23 +11,26 @@ import (
 )
 
 const countExpiredHolds = `-- name: CountExpiredHolds :one
-SELECT COUNT(*) FROM seats WHERE held_by = ?1 AND sold_to = '' AND id IN (/*SLICE:seat_ids*/?)
+SELECT COUNT(*) FROM seats WHERE held_by = ?1 AND sold_to = '' AND expires_at <= ?2 AND id IN (/*SLICE:seat_ids*/?)
 `
 
 type CountExpiredHoldsParams struct {
 	Session string
+	Now     int64
 	SeatIds []int64
 }
 
-// Reads after the claim (W1 allows them), in the same transaction. The claim
-// has just sold every listed seat this session held with a live hold, so a
-// listed seat this session still holds and that is still unsold is one whose
-// hold has expired (expires_at is now or earlier): F2. The sold count is the
-// postcondition.
+// Reads after the claim (W1 allows them), in the same transaction. A listed
+// seat this session still holds, still unsold, whose hold ended no later than
+// now has expired: F2. The read compares with the server-set now (Q1), before
+// the IN list, which stays last (Q7). A listed seat whose expired hold was
+// taken by another session is not held by this session, so it is not counted
+// here and the action answers F13. The sold count is the postcondition.
 func (q *Queries) CountExpiredHolds(ctx context.Context, arg CountExpiredHoldsParams) (int64, error) {
 	query := countExpiredHolds
 	var queryParams []interface{}
 	queryParams = append(queryParams, arg.Session)
+	queryParams = append(queryParams, arg.Now)
 	if len(arg.SeatIds) > 0 {
 		for _, v := range arg.SeatIds {
 			queryParams = append(queryParams, v)

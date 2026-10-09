@@ -28,8 +28,10 @@ not sold, it is held by this session and its hold has not expired
 parameter. It must change exactly one row per listed seat; otherwise the
 transaction rolls back and no seat in the list is sold. Seats this session
 holds that are not in the list are never touched. A read made after the
-UPDATE (never before) explains an expired hold. A hold whose `expires_at`
-equals now has expired; one that expires one second after now has not.
+UPDATE (never before) explains an expired hold: it counts the listed seats
+this session still holds, unsold, whose `expires_at` is no later than now.
+A hold whose `expires_at` equals now has expired; one that expires one second
+after now has not.
 
 ## Failure cases
 - **F2** — at least one listed seat is still held by this session but its hold
@@ -38,8 +40,9 @@ equals now has expired; one that expires one second after now has not.
 - **F8** — the session is missing (the empty text: no valid cookie): nothing
   is written.
 - **F13** — at least one listed seat is not held by this session (held by
-  someone else, released or never held, already sold, or no such seat): no
-  seat is sold, every change is rolled back.
+  someone else, including a seat whose hold by this session expired and was
+  then taken by someone else; released or never held; already sold; or no
+  such seat): no seat is sold, every change is rolled back.
 
 Every failure changes nothing.
 

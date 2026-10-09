@@ -104,7 +104,7 @@ features/confirm_holds/confirm_holds.en
 They are generated (`bridge-en -write`), never edited by hand, and checked in
 CI (`bridge-en -check features/*/`): the check fails if the code and its
 English drift apart, if a slice uses a construct outside the
-[rulebook](https://github.com/pierre10101/go-ai-bridge/blob/v0.1.3/RULEBOOK.md),
+[rulebook](https://github.com/pierre10101/go-ai-bridge/blob/v0.1.4/RULEBOOK.md),
 or if the failure IDs in `intent.md`, `action.go` and `checks/` differ. Read a
 `.en` diff in a pull request the way you would read the code.
 
