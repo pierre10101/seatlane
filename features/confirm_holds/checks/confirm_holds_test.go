@@ -149,6 +149,54 @@ func TestF2_OneHoldExpiredNothingWritten(t *testing.T) {
 	w.expectSold(testkit.Alice, t0+599, 1, 2, 3)
 }
 
+// The F2 read itself (CountExpiredHolds) compares expires_at with the
+// server-set now at the exact boundary, with its now parameter numbered before
+// the IN list (Q7): a hold ending exactly now is counted, one second earlier it
+// is not; a seat not in the list, a seat held by someone else and a sold seat
+// are never counted.
+func TestExpiredHoldsReadBoundary(t *testing.T) {
+	w := newWorld(t)
+	w.doHold(testkit.Alice, t0, 1, 2, 3)
+	w.doHold(testkit.Bob, t0, 4)
+	if _, err := run(w.one.Handle, confirm_hold.Input{SeatID: 3, Session: testkit.Alice, Now: t0 + 1}); err != nil {
+		t.Fatal(err)
+	}
+	q := db.New(txn.DB(w.conn))
+	for _, tc := range []struct {
+		now  int64
+		ids  []int64
+		want int64
+	}{
+		{t0 + 599, []int64{1, 2, 3, 4}, 0},
+		{t0 + 600, []int64{1, 2, 3, 4}, 2},
+		{t0 + 600, []int64{2}, 1},
+		{t0 + 600, []int64{3, 4}, 0},
+		{t0 + 3600, []int64{1, 4, 5}, 1},
+	} {
+		got, err := txn.Run(context.Background(), func(ctx context.Context) (int64, error) {
+			return q.CountExpiredHolds(ctx, db.CountExpiredHoldsParams{Session: testkit.Alice, Now: tc.now, SeatIds: tc.ids})
+		})
+		if err != nil || got != tc.want {
+			t.Fatalf("now %+d ids %v: got %d (%v), want %d", tc.now-t0, tc.ids, got, err, tc.want)
+		}
+	}
+}
+
+// F13, not F2: my hold expired and someone else then took the seat. The seat
+// is no longer held by this session, so the F2 read does not count it.
+func TestF13_ExpiredThenTakenByOtherIsF13(t *testing.T) {
+	w := newWorld(t)
+	w.doHold(testkit.Alice, t0, 1, 5)
+	w.doHold(testkit.Alice, t0+300, 2)
+	w.doHold(testkit.Bob, t0+600, 5)
+	w.doHold(testkit.Alice, t0+600, 1)
+	w.expectNothingWritten(func() {
+		if _, err := w.doConfirm(testkit.Alice, t0+700, 1, 2, 5); !errors.Is(err, confirm_holds.F13) {
+			t.Fatalf("want F13, got %v", err)
+		}
+	})
+}
+
 // F2 wins over F13 when the list also has a seat that is not mine.
 func TestF2_ExpiredAndForeignIsF2(t *testing.T) {
 	w := newWorld(t)

@@ -57,7 +57,7 @@ func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
 		return Output{}, err
 	}
 
-	expired, err := a.q.CountExpiredHolds(ctx, db.CountExpiredHoldsParams{Session: in.Session, SeatIds: in.SeatIDs})
+	expired, err := a.q.CountExpiredHolds(ctx, db.CountExpiredHoldsParams{Session: in.Session, Now: in.Now, SeatIds: in.SeatIDs})
 	if err != nil {
 		return Output{}, err
 	}
