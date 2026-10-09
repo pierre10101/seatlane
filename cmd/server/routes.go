@@ -8,6 +8,8 @@ import (
 	"github.com/pierre10101/go-ai-bridge/runtime/txn"
 	"github.com/pierre10101/seatlane/features/confirm_hold"
 	confirmdb "github.com/pierre10101/seatlane/features/confirm_hold/db"
+	"github.com/pierre10101/seatlane/features/confirm_holds"
+	confirmalldb "github.com/pierre10101/seatlane/features/confirm_holds/db"
 	"github.com/pierre10101/seatlane/features/hold_seat"
 	holddb "github.com/pierre10101/seatlane/features/hold_seat/db"
 	"github.com/pierre10101/seatlane/features/list_events"
@@ -29,6 +31,7 @@ func API(db *sql.DB) *http.ServeMux {
 	mux.Handle(list_my_holds.Route, httpx.Bind(list_my_holds.New(myholdsdb.New(txn.DB(db))).Handle))
 	mux.Handle(hold_seat.Route, httpx.Bind(hold_seat.New(holddb.New(txn.DB(db))).Handle))
 	mux.Handle(confirm_hold.Route, httpx.Bind(confirm_hold.New(confirmdb.New(txn.DB(db))).Handle))
+	mux.Handle(confirm_holds.Route, httpx.Bind(confirm_holds.New(confirmalldb.New(txn.DB(db))).Handle))
 	mux.Handle(release_hold.Route, httpx.Bind(release_hold.New(releasedb.New(txn.DB(db))).Handle))
 	return mux
 }

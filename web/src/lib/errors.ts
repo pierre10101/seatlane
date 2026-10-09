@@ -17,6 +17,7 @@ const COPY: Record<string, Copy> = {
   F10: { title: 'Event not found', description: 'This event does not exist or is no longer on sale.' },
   F11: { title: 'Could not load that list', description: 'The page size was not accepted. Refresh and try again.' },
   F12: { title: 'Could not load that list', description: 'The list position was not accepted. Refresh and try again.' },
+  F13: { title: 'A seat in your list is not yours any more', description: 'Someone else holds it, it was released or it is already booked. Release it and try again.' },
   bad_request: { title: 'That request did not go through', description: 'Something about it was not accepted. Refresh and try again.' },
   internal: { title: 'Something went wrong on our side', description: 'Nothing was changed. Please try again in a moment.' },
   network: { title: 'You seem to be offline', description: 'We could not reach Seatlane. Check your connection and try again.' },
@@ -32,4 +33,18 @@ export function errorCopy(e: unknown): Copy {
 
 export function copyFor(id: string): Copy {
   return COPY[id] ?? COPY.internal
+}
+
+// "Confirm all N seats" (confirm_holds) books every seat together or none:
+// its failures say that nothing was booked.
+const GROUP_COPY: Record<string, Copy> = {
+  F2: { title: 'A hold in your list ran out', description: 'Nothing was booked. Hold that seat again, or release it, then confirm all again.' },
+  F13: { title: 'A seat in your list is not yours any more', description: 'Nothing was booked. Someone else holds it, it was released or it is already booked. Release it, then confirm all again.' },
+}
+
+export function groupCopyFor(id: string): Copy {
+  const c = GROUP_COPY[id] ?? copyFor(id)
+  // Offline: the answer never arrived, so the refresh after it shows what happened.
+  if (id === 'network') return c
+  return c.description.startsWith('Nothing was booked') ? c : { title: c.title, description: `Nothing was booked. ${c.description}` }
 }

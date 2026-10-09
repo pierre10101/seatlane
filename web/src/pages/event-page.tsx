@@ -4,13 +4,13 @@ import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { ArrowLeft, CalendarDays, Clock3, MapPin, RefreshCw, SearchX, TicketX, WifiOff } from 'lucide-react'
 import { api, type MyHold, type Seat, type SeatMap as SeatMapData } from '@/lib/api'
-import { copyFor, errorCopy, errorId } from '@/lib/errors'
+import { errorCopy, errorId, groupCopyFor } from '@/lib/errors'
 import { clock, formatDate, formatRange, formatTime, seatLabel } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EventArt } from '@/components/event-art'
 import { Legend, SeatMap, type Pending } from '@/components/seat-map'
-import { CheckoutPanel, type ConfirmResult, type HoldRow } from '@/components/checkout-panel'
+import { CheckoutPanel, type HoldRow } from '@/components/checkout-panel'
 import { SuccessState } from '@/components/success-state'
 import { StateCard } from '@/components/states'
 import { useTicker } from '@/hooks/use-ticker'
@@ -34,7 +34,6 @@ export function EventPage() {
   const [stale, setStale] = useState(false)
   const [success, setSuccess] = useState<number[] | null>(null)
   const [busyAll, setBusyAll] = useState(false)
-  const [results, setResults] = useState<ConfirmResult[] | null>(null)
   const [message, setMessage] = useState('')
   const [askRelease, setAskRelease] = useState<number | null>(null)
   const holdsRef = useRef<HoldView[]>([])
@@ -91,7 +90,6 @@ export function EventPage() {
     setMap(null)
     holdsRef.current = []
     setHolds([])
-    setResults(null)
     refresh()
     const id = window.setInterval(() => document.visibilityState === 'visible' && refresh(), POLL_MS)
     const onVisible = () => document.visibilityState === 'visible' && refresh()
@@ -125,8 +123,6 @@ export function EventPage() {
   const hold = useCallback(
     async (seatId: number) => {
       setPendingFor(seatId, 'hold')
-      // A seat held again is no longer a failed result of "Confirm each seat".
-      setResults((prev) => (prev ? prev.filter((r) => r.ok || r.seatId !== seatId) : prev))
       try {
         const res = await api.hold(seatId)
         // Show the server's answer at once; the refresh below reconciles.
@@ -183,43 +179,30 @@ export function EventPage() {
     [announce, fail, nameOf, refresh, setPendingFor],
   )
 
-  // "Confirm each seat": one confirm_hold per seat in the panel, in order.
-  // Seats are NOT booked together: each call succeeds or fails on its own
-  // (an all-or-nothing group confirm needs bridge-en v0.1.3), so the panel
-  // lists every seat's own answer. The server decides each one, including a
-  // hold this page already shows as expired (that answer is F2).
-  const confirmEach = useCallback(async () => {
-    const ids = [...holdsRef.current]
-      .sort((a, b) => Number(b.active) - Number(a.active) || a.expires_at - b.expires_at || a.seat_id - b.seat_id)
-      .map((h) => h.seat_id)
+  // "Confirm all N seats": ONE confirm_holds call with every seat shown in
+  // the panel (live and expired: the server decides each one). The server
+  // books all of them together or none: on any failure (F2 a hold ran out,
+  // F13 a seat is not yours) nothing is booked, and the toast says so.
+  const confirmAll = useCallback(async () => {
+    const ids = [...holdsRef.current].map((h) => h.seat_id).sort((a, b) => a - b)
     if (ids.length === 0) return
     setBusyAll(true)
-    setResults(null)
-    const out: ConfirmResult[] = []
-    for (const id of ids) {
-      setPendingFor(id, 'confirm')
-      try {
-        await api.confirm(id)
-        out.push({ seatId: id, seat: seatById.get(id), ok: true })
-      } catch (e) {
-        out.push({ seatId: id, seat: seatById.get(id), ok: false, errorId: errorId(e) })
-      }
+    ids.forEach((id) => setPendingFor(id, 'confirm'))
+    try {
+      await api.confirmAll(ids)
+      setSuccess(ids)
+      announce(`Booked together: ${ids.map(nameOf).join(', ')}.`)
+    } catch (e) {
+      const id = errorId(e)
+      const copy = groupCopyFor(id)
+      toast.error(copy.title, { id: `err-${id}-confirm-all`, description: copy.description })
+      announce(`Could not confirm your ${ids.length === 1 ? 'seat' : `${ids.length} seats`}: ${copy.title}. ${copy.description}`)
+    } finally {
+      await refresh()
+      ids.forEach((id) => setPendingFor(id, null))
+      setBusyAll(false)
     }
-    await refresh()
-    ids.forEach((id) => setPendingFor(id, null))
-    setResults(out)
-    setBusyAll(false)
-    const sold = out.filter((r) => r.ok).map((r) => r.seatId)
-    const failed = out.filter((r) => !r.ok)
-    if (failed.length === 0) {
-      setSuccess(sold)
-      announce(`Booked: ${sold.map(nameOf).join(', ')}.`)
-    } else {
-      const head = `${sold.length} of ${out.length} seats confirmed.`
-      const why = failed.map((r) => `${nameOf(r.seatId)} was not booked: ${copyFor(r.errorId ?? 'internal').title}.`).join(' ')
-      announce(`${head} ${why}`)
-    }
-  }, [announce, nameOf, refresh, seatById, setPendingFor])
+  }, [announce, nameOf, refresh, setPendingFor])
 
   // Tapping your own held seat on a touch screen asks first (a stray tap
   // while scrolling must not give a seat away); a mouse click or Enter
@@ -339,11 +322,9 @@ export function EventPage() {
             pending={pending}
             busy={busyAll}
             onConfirm={(id) => confirmSeats([id])}
-            onConfirmEach={confirmEach}
+            onConfirmAll={confirmAll}
             onRelease={release}
             onHoldAgain={hold}
-            results={results}
-            onDismissResults={() => setResults(null)}
           />
         </aside>
       </div>

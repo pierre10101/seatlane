@@ -17,7 +17,8 @@ server says.
 | ![Seat map with my holds and countdowns, light](docs/screenshots/seatmap-light.png) | ![Seat map with my holds and countdowns, dark](docs/screenshots/seatmap-dark.png) |
 | ![F1 toast: the seat is already held, light](docs/screenshots/toast-f1-light.png) | ![F1 toast: the seat is already held, dark](docs/screenshots/toast-f1-dark.png) |
 | ![Booking confirmed](docs/screenshots/success-light.png) | ![A hold that expired](docs/screenshots/expired-light.png) |
-| ![Confirm each seat: 1 of 2 seats confirmed, one hold had expired (F2), light](docs/screenshots/confirm-each-partial-light.png) | ![Confirm each seat: 1 of 2 seats confirmed, one hold had expired (F2), dark](docs/screenshots/confirm-each-partial-dark.png) |
+| ![Confirm all 2 seats: booked together, or none are, light](docs/screenshots/confirm-all-light.png) | ![Confirm all 2 seats: booked together, or none are, dark](docs/screenshots/confirm-all-dark.png) |
+| ![Confirm all with one expired hold: F2 toast, nothing booked, the other seat still held, light](docs/screenshots/confirm-all-f2-light.png) | ![Confirm all with one expired hold: F2 toast, nothing booked, the other seat still held, dark](docs/screenshots/confirm-all-f2-dark.png) |
 
 <p align="center">
   <img src="docs/screenshots/mobile-seatmap-light.png" alt="Seat map on a phone, light" width="260">
@@ -28,7 +29,7 @@ server says.
 ## How it works
 
 - **One slice per action** under `features/`: `list_events`, `show_seat_map`,
-  `list_my_holds`, `hold_seat`, `confirm_hold`, `release_hold`. Each has an
+  `list_my_holds`, `hold_seat`, `confirm_hold`, `confirm_holds`, `release_hold`. Each has an
   `intent.md` (why, inputs, outputs, failure cases written first), plain SQL in
   `queries/`, sqlc code in `db/`, the action in `action.go`, one check per
   failure ID in `checks/`, and its English in `<slice>.en`.
@@ -37,6 +38,11 @@ server says.
   not sold and nobody holds it or its hold has expired") whose changed-row
   count must be exactly one. Reads after it only explain why it changed
   nothing (F1, F6, ...). Check-then-write is refused by bridge-en.
+- **Several seats: all or none.** `confirm_holds` takes `seat_ids` (1 to 20
+  ids, no duplicates; anything else is a 400) and sells them with one
+  conditional `UPDATE ... AND id IN (sqlc.slice(seat_ids))`; unless it changed
+  exactly one row per listed seat, the transaction rolls back and no seat is
+  sold (F2 if one of the holds has expired, F13 if a seat is not held by you).
 - **The server owns time and identity.** `now` (`clock:"now"`) and `session`
   (`server:"session"`) are set by the bridge-en runtime from the server clock
   and the `bridge_session` cookie; a request that sends either is a 400. A
@@ -73,15 +79,12 @@ scrolls sideways inside its card and has +/- buttons for bigger seats (40,
 48, 56px). Tapping your own held seat on a touch screen asks "Release …?"
 before giving it back; a mouse click or Enter releases at once.
 
-**Each seat is confirmed separately.** "Confirm N seats one by one" sends
-one `confirm_hold` per seat, and each seat is booked or not on its own: if
-one hold has run out, the other seats are still booked. The panel then lists
-every seat's answer (confirmed, or the friendly copy for its failure ID) and
-says plainly when only part of a group went through, e.g. "1 of 2 seats
-confirmed; E7's hold had expired", with "Hold again" on the seat that missed
-out. An atomic, all-or-nothing group confirm is planned with bridge-en
-v0.1.3 (it needs a list input; see
-[docs/bridge-en-gaps.md](docs/bridge-en-gaps.md)).
+**All seats together, or none.** "Confirm all N seats" sends one
+`confirm_holds` call with every seat shown in the panel: "All N seats are
+booked together, or none are." If any of them cannot be sold (a hold ran out,
+F2; a seat is no longer yours, F13), nothing is booked, your other holds stay
+as they were, and a toast says which failure it was. Each seat still has its
+own Confirm button, which books just that seat (`confirm_hold`).
 
 The seat map is keyboard-navigable (arrow keys, Home/End, Enter), has
 hover/focus tooltips with the seat label and price in rand, and announces
@@ -95,12 +98,13 @@ Each slice's review copy sits next to its code:
 features/hold_seat/hold_seat.en          features/confirm_hold/confirm_hold.en
 features/release_hold/release_hold.en    features/show_seat_map/show_seat_map.en
 features/list_my_holds/list_my_holds.en  features/list_events/list_events.en
+features/confirm_holds/confirm_holds.en
 ```
 
 They are generated (`bridge-en -write`), never edited by hand, and checked in
 CI (`bridge-en -check features/*/`): the check fails if the code and its
 English drift apart, if a slice uses a construct outside the
-[rulebook](https://github.com/pierre10101/go-ai-bridge/blob/v0.1.2/RULEBOOK.md),
+[rulebook](https://github.com/pierre10101/go-ai-bridge/blob/v0.1.3/RULEBOOK.md),
 or if the failure IDs in `intent.md`, `action.go` and `checks/` differ. Read a
 `.en` diff in a pull request the way you would read the code.
 
@@ -140,6 +144,7 @@ fresh one.
 | `GET /api/events/{id}/holds` | list_my_holds | F8, F11, F12 |
 | `POST /api/holds` `{"seat_id"}` | hold_seat | F1, F6, F7, F8 |
 | `POST /api/holds/confirm` `{"seat_id"}` | confirm_hold | F2, F3, F4, F5, F6, F7, F8 |
+| `POST /api/holds/confirm-all` `{"seat_ids"}` | confirm_holds | F2, F8, F13 |
 | `POST /api/holds/release` `{"seat_id"}` | release_hold | F5, F6, F7, F8, F9 |
 
 ## Layout

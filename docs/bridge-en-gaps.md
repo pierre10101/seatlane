@@ -1,5 +1,10 @@
 # bridge-en gaps (for the v0.2 list)
 
+**Status (2026-10-09): G1-G3 are closed by bridge-en v0.1.3** (D10 list
+inputs, Q7 `id IN (sqlc.slice(...))` claims, the S11 multi-row check and the
+strict S10 check). Seatlane uses them in `features/confirm_holds`. The notes
+below are kept as the record of what v0.1.2 refused.
+
 Found while building "Confirm all" on bridge-en v0.1.2 (2026-10-09). Seatlane
 does not modify bridge-en and uses no waivers, so these block the feature.
 

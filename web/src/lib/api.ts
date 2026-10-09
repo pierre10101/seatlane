@@ -35,9 +35,10 @@ export type SeatMap = { event: EventCard; seats: Seat[]; now: number }
 export type MyHolds = { holds: MyHold[]; now: number }
 export type HoldAnswer = { seat_id: number; held_at: number; expires_at: number; now: number }
 export type ConfirmAnswer = { seat_id: number; sold_at: number; now: number }
+export type ConfirmAllAnswer = { confirmed: number; sold_at: number; now: number }
 export type ReleaseAnswer = { seat_id: number; released_at: number; now: number }
 
-/** An error answer. `id` is the server's `error.id` (F1..F12, bad_request,
+/** An error answer. `id` is the server's `error.id` (F1..F13, bad_request,
  * internal) or `network` when the server could not be reached. The UI maps
  * the id to copy; it never reads the server's message. */
 export class ApiError extends Error {
@@ -125,5 +126,7 @@ export const api = {
 
   hold: (seatId: number) => request<HoldAnswer>('/api/holds', { method: 'POST', body: JSON.stringify({ seat_id: seatId }) }),
   confirm: (seatId: number) => request<ConfirmAnswer>('/api/holds/confirm', { method: 'POST', body: JSON.stringify({ seat_id: seatId }) }),
+  /** confirm_holds: every listed seat is booked together, or none is. */
+  confirmAll: (seatIds: number[]) => request<ConfirmAllAnswer>('/api/holds/confirm-all', { method: 'POST', body: JSON.stringify({ seat_ids: seatIds }) }),
   release: (seatId: number) => request<ReleaseAnswer>('/api/holds/release', { method: 'POST', body: JSON.stringify({ seat_id: seatId }) }),
 }
