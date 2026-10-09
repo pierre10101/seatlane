@@ -104,9 +104,17 @@ features/confirm_holds/confirm_holds.en
 They are generated (`bridge-en -write`), never edited by hand, and checked in
 CI (`bridge-en -check features/*/`): the check fails if the code and its
 English drift apart, if a slice uses a construct outside the
-[rulebook](https://github.com/pierre10101/go-ai-bridge/blob/v0.1.4/RULEBOOK.md),
-or if the failure IDs in `intent.md`, `action.go` and `checks/` differ. Read a
-`.en` diff in a pull request the way you would read the code.
+[rulebook](https://github.com/pierre10101/go-ai-bridge/blob/v0.2.0/RULEBOOK.md),
+or if the failure IDs in `intent.md`, `action.go` and `checks/` differ. Each
+`intent.md` lists its failure cases under exactly one `## Failure cases`
+heading, one `- F<n>: <text>` line each. Read a `.en` diff in a pull request
+the way you would read the code: on every pull request, CI posts one comment
+(updated on each push) with each changed feature's intent next to its English
+diff.
+
+Agents (and people) changing the app follow [AGENTS.md](AGENTS.md), written
+by `bridge-en init`; `CLAUDE.md`, `GEMINI.md`, `.cursor/rules/bridge-en.mdc`
+and `.github/copilot-instructions.md` point to it.
 
 ## Run it
 

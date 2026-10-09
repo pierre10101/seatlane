@@ -73,6 +73,6 @@ func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
 	next := page.NextAfter(rows, "id", in.Limit)
 
 	out := Output{Events: items, NextAfter: next}
-	assert.Post(out.Events != nil, "an empty page is [], not null")
+	assert.Post(out.Events != nil, "an empty page is the JSON list [], never null")
 	return out, nil
 }

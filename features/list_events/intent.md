@@ -13,5 +13,7 @@ The home page lists the events on sale, newest first, as cards.
 - `next_after`: the cursor of the next page, 0 on the last page.
 
 ## Failure cases
-- **F11** — `limit` is not between 1 and 100.
-- **F12** — `after` is zero or negative.
+- F11: `limit` is not between 1 and 100 (both included; 0 and 101 are
+  refused, 1 and 100 are allowed): nothing is read.
+- F12: `after` is sent and is zero or negative (leaving it out starts at the
+  newest event): nothing is read.

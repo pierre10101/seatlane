@@ -50,7 +50,7 @@ Steps 3 to 7 run in one read-only database transaction. It begins with the query
    - `events` = the event cards built in step 4
    - `next_after` = the next cursor
 7. Check that:
-   - the answer's `events` is present ("an empty page is [], not null")
+   - the answer's `events` is present ("an empty page is the JSON list [], never null")
    If any of these is false, it is a bug: stop with HTTP 500 Internal Server Error.
 8. End the read-only transaction, then answer HTTP 200 OK with the answer. If ending it fails, stop with HTTP 500 Internal Server Error.
 

@@ -25,17 +25,19 @@ after it (never before) explain why. A hold whose `expires_at` equals now has
 expired: confirming at that second is F2.
 
 ## Failure cases
-- **F2** — the hold expired: the seat is still held by this session but its
+- F2: the hold expired: the seat is still held by this session but its
   `expires_at` is now or earlier (the hold was taken 600 seconds or more ago).
-- **F3** — confirm after release: nobody holds the seat (it was released, or
-  never held).
-- **F4** — confirm another person's hold: the seat is held by another session.
-- **F5** — double confirm: the seat is already sold to this session.
-- **F6** — the seat is already sold to someone else.
-- **F7** — the seat does not exist.
-- **F8** — the session is missing (the empty text: no valid cookie).
-
-Every failure changes nothing.
+  Nothing changes.
+- F3: confirm after release: nobody holds the seat (it was released, or
+  never held). Nothing changes.
+- F4: confirm another person's hold: the seat is held by another session.
+  Nothing changes.
+- F5: double confirm: the seat is already sold to this session. Nothing
+  changes.
+- F6: the seat is already sold to someone else. Nothing changes.
+- F7: the seat does not exist. Nothing changes.
+- F8: the session is missing (the empty text: no valid cookie). Nothing
+  changes.
 
 ## Out of scope
 Payment, refunds.
