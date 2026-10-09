@@ -1,0 +1,10 @@
+# build output and local data
+/bin/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+web/node_modules/
+web/dist/
+.env
+.env.*

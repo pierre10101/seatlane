@@ -1,0 +1,37 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    schema: "schema.sql"
+    queries: "features/list_events/queries"
+    gen:
+      go:
+        package: "db"
+        out: "features/list_events/db"
+  - engine: "sqlite"
+    schema: "schema.sql"
+    queries: "features/show_seat_map/queries"
+    gen:
+      go:
+        package: "db"
+        out: "features/show_seat_map/db"
+  - engine: "sqlite"
+    schema: "schema.sql"
+    queries: "features/hold_seat/queries"
+    gen:
+      go:
+        package: "db"
+        out: "features/hold_seat/db"
+  - engine: "sqlite"
+    schema: "schema.sql"
+    queries: "features/confirm_hold/queries"
+    gen:
+      go:
+        package: "db"
+        out: "features/confirm_hold/db"
+  - engine: "sqlite"
+    schema: "schema.sql"
+    queries: "features/release_hold/queries"
+    gen:
+      go:
+        package: "db"
+        out: "features/release_hold/db"
