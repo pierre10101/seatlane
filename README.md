@@ -21,6 +21,7 @@ server says.
 <p align="center">
   <img src="docs/screenshots/mobile-seatmap-light.png" alt="Seat map on a phone, light" width="260">
   <img src="docs/screenshots/mobile-seatmap-dark.png" alt="Seat map on a phone, dark" width="260">
+  <img src="docs/screenshots/mobile-release-confirm-dark.png" alt="Tapping your own held seat on a phone asks before releasing it" width="260">
 </p>
 
 ## How it works
@@ -65,6 +66,17 @@ All seat and hold rules live in Go. The web app:
   says so;
 - shows a pending state the moment you click a seat, then reconciles with the
   server's answer; every failure ID gets a toast with its own copy.
+
+On screens under 640px every seat is a tap target of at least 40px; the map
+scrolls sideways inside its card and has +/- buttons for bigger seats (40,
+48, 56px). Tapping your own held seat on a touch screen asks "Release …?"
+before giving it back; a mouse click or Enter releases at once.
+
+"Confirm all" still confirms seat by seat (one `confirm_hold` per seat), so a
+hold that runs out half-way can leave part of a group booked. An
+all-or-nothing confirm of the seats on the review screen needs a list input
+that bridge-en v0.1.2 does not have; see
+[docs/bridge-en-gaps.md](docs/bridge-en-gaps.md).
 
 The seat map is keyboard-navigable (arrow keys, Home/End, Enter), has
 hover/focus tooltips with the seat label and price in rand, and announces

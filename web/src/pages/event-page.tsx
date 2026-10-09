@@ -14,6 +14,7 @@ import { CheckoutPanel, type HoldRow } from '@/components/checkout-panel'
 import { SuccessState } from '@/components/success-state'
 import { StateCard } from '@/components/states'
 import { useTicker } from '@/hooks/use-ticker'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 
 const POLL_MS = 4000
 
@@ -34,6 +35,7 @@ export function EventPage() {
   const [success, setSuccess] = useState<number[] | null>(null)
   const [busyAll, setBusyAll] = useState(false)
   const [message, setMessage] = useState('')
+  const [askRelease, setAskRelease] = useState<number | null>(null)
   const holdsRef = useRef<HoldView[]>([])
   const seq = useRef(0)
 
@@ -183,9 +185,13 @@ export function EventPage() {
     setBusyAll(false)
   }, [confirmSeats])
 
+  // Tapping your own held seat on a touch screen asks first (a stray tap
+  // while scrolling must not give a seat away); a mouse click or Enter
+  // releases at once, as the tooltip says.
   const onSeat = useCallback(
-    (s: Seat) => {
+    (s: Seat, via: { touch: boolean }) => {
       if (s.available) hold(s.seat_id)
+      else if (s.held_by_me && via.touch) setAskRelease(s.seat_id)
       else if (s.held_by_me) release(s.seat_id)
     },
     [hold, release],
@@ -317,6 +323,29 @@ export function EventPage() {
           </div>
         </motion.div>
       )}
+
+      <AlertDialog open={askRelease !== null} onOpenChange={(open) => !open && setAskRelease(null)}>
+        <AlertDialogContent data-testid="release-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Release {askRelease !== null ? nameOf(askRelease) : 'this seat'}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              It goes back on sale straight away, and someone else can take it.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="release-keep">Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="release-yes"
+              onClick={() => {
+                if (askRelease !== null) release(askRelease)
+                setAskRelease(null)
+              }}
+            >
+              Release
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <SuccessState open={successSeats.length > 0} event={e} seats={successSeats} onClose={() => setSuccess(null)} />
     </main>

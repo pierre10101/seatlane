@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Check, Loader2, Lock, X } from 'lucide-react'
+import { Check, Loader2, Lock, Minus, Plus, X } from 'lucide-react'
 import type { Seat } from '@/lib/api'
 import { formatMoney, formatRange, seatLabel } from '@/lib/format'
 import { layout, seatState, STATE_TEXT, type SeatState } from '@/lib/seats'
@@ -11,8 +11,13 @@ export type Pending = 'hold' | 'release' | 'confirm'
 type Props = {
   seats: Seat[]
   pending: ReadonlyMap<number, Pending>
-  onActivate: (seat: Seat) => void
+  /** `touch`: the seat was tapped on a touch screen (not a mouse click or a key). */
+  onActivate: (seat: Seat, via: { touch: boolean }) => void
 }
+
+/** Seat sizes on screens under 640px, in CSS pixels: never below 40, the
+ * smallest comfortable tap target. Wider screens use a fixed 28px seat. */
+const ZOOMS = [40, 48, 56] as const
 
 const SEAT_STYLE: Record<SeatState, string> = {
   available:
@@ -42,6 +47,7 @@ export function SeatMap({ seats, pending, onActivate }: Props) {
   const canvas = useRef<HTMLDivElement>(null)
   const scroller = useRef<HTMLDivElement>(null)
   const [wide, setWide] = useState(false)
+  const [zoom, setZoom] = useState(0)
   // On narrow screens a wide hall scrolls sideways: start centred on the stage.
   useEffect(() => {
     const el = scroller.current
@@ -55,7 +61,7 @@ export function SeatMap({ seats, pending, onActivate }: Props) {
     const ro = new ResizeObserver(check)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [sections.length])
+  }, [sections.length, zoom])
 
   // Roving tabindex: one seat is in the tab order (the last focused one, or
   // the first available seat, or the first seat).
@@ -107,12 +113,21 @@ export function SeatMap({ seats, pending, onActivate }: Props) {
 
   return (
     <div className="relative">
-      {wide && (
-        <p className="mb-2 text-center text-[11px] text-muted-foreground sm:hidden" aria-hidden>
-          Swipe sideways to see every seat
+      <div className="mb-2 flex items-center justify-between gap-2 sm:hidden" data-testid="zoom-controls">
+        <p className="text-[11px] text-muted-foreground" aria-hidden>
+          {wide ? 'Swipe sideways to see every seat' : 'Tap a seat to hold it'}
         </p>
-      )}
-      <div ref={scroller} className="overflow-x-auto overscroll-x-contain pb-2 [scrollbar-width:thin]">
+        <div className="flex items-center gap-1" role="group" aria-label="Seat size">
+          <button type="button" onClick={() => setZoom((z) => Math.max(0, z - 1))} disabled={zoom === 0} aria-label="Smaller seats" data-testid="zoom-out" className="grid size-10 place-items-center rounded-lg border bg-background text-foreground transition-colors outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-40">
+            <Minus className="size-4" aria-hidden />
+          </button>
+          <span className="w-10 text-center text-[11px] text-muted-foreground tabular" aria-live="polite">{ZOOMS[zoom]}px</span>
+          <button type="button" onClick={() => setZoom((z) => Math.min(ZOOMS.length - 1, z + 1))} disabled={zoom === ZOOMS.length - 1} aria-label="Bigger seats" data-testid="zoom-in" className="grid size-10 place-items-center rounded-lg border bg-background text-foreground transition-colors outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-40">
+            <Plus className="size-4" aria-hidden />
+          </button>
+        </div>
+      </div>
+      <div ref={scroller} className="overflow-x-auto overscroll-x-contain pb-2 [scrollbar-width:thin]" style={{ '--seat': `${ZOOMS[zoom]}px` } as React.CSSProperties} data-testid="seat-scroller">
         <div ref={canvas} className="relative mx-auto flex w-max min-w-full flex-col items-center gap-7 px-1 pt-1 sm:px-2" onKeyDown={onKeyDown} onMouseLeave={() => setTip(null)}>
           <Stage />
           <div role="grid" aria-label="Seat map. Use the arrow keys to move between seats, Enter to hold or release." aria-rowcount={rows.length} className="flex flex-col items-center gap-7">
@@ -131,7 +146,7 @@ export function SeatMap({ seats, pending, onActivate }: Props) {
                   {sec.rows.map((row) => (
                     <div key={row.label} role="row" className="flex items-center gap-1 sm:gap-2">
                       <RowLabel label={row.label} />
-                      <div className="flex gap-[3px] sm:gap-1.5">
+                      <div className="flex gap-1 sm:gap-1.5">
                         {row.seats.map((s) => (
                           <SeatButton
                             key={s.seat_id}
@@ -182,7 +197,7 @@ type SeatButtonProps = {
   seat: Seat
   pending?: Pending
   tabbable: boolean
-  onActivate: (s: Seat) => void
+  onActivate: (s: Seat, via: { touch: boolean }) => void
   onShow: (s: Seat, el: HTMLElement) => void
   onHide: () => void
   onFocusSeat: (id: number) => void
@@ -191,6 +206,7 @@ type SeatButtonProps = {
 const SeatButton = memo(function SeatButton({ seat, pending, tabbable, onActivate, onShow, onHide, onFocusSeat }: SeatButtonProps) {
   const state = seatState(seat)
   const actionable = state === 'available' || state === 'mine'
+  const pointer = useRef('')
   const label = `${seat.section}, row ${seat.row}, seat ${seat.number}, ${formatMoney(seat.price)}, ${pending ? pendingText(pending) : STATE_TEXT[state].toLowerCase()}`
   return (
     <span role="gridcell" className="contents">
@@ -205,7 +221,12 @@ const SeatButton = memo(function SeatButton({ seat, pending, tabbable, onActivat
         aria-busy={!!pending}
         tabIndex={tabbable ? 0 : -1}
         whileTap={actionable && !pending ? { scale: 0.85 } : undefined}
-        onClick={() => actionable && !pending && onActivate(seat)}
+        onPointerDown={(e) => { pointer.current = e.pointerType }}
+        onClick={(e) => {
+          const touch = pointer.current === 'touch' || (e.nativeEvent as PointerEvent).pointerType === 'touch'
+          pointer.current = ''
+          if (actionable && !pending) onActivate(seat, { touch })
+        }}
         onMouseEnter={(e) => onShow(seat, e.currentTarget)}
         onFocus={(e) => {
           onFocusSeat(seat.seat_id)
@@ -213,7 +234,7 @@ const SeatButton = memo(function SeatButton({ seat, pending, tabbable, onActivat
         }}
         onBlur={onHide}
         className={cn(
-          'relative grid size-5 place-items-center rounded-[6px] rounded-b-[3px] border-[1.5px] transition-all duration-150 outline-none focus-visible:ring-3 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:size-7 sm:rounded-[9px] sm:rounded-b-[5px]',
+          'relative grid size-(--seat) place-items-center rounded-[10px] rounded-b-[5px] border-[1.5px] transition-all duration-150 outline-none focus-visible:ring-3 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:size-7 sm:rounded-[9px] sm:rounded-b-[5px]',
           SEAT_STYLE[state],
           pending === 'hold' && 'border-primary bg-primary/40 text-primary-foreground',
           pending === 'release' && 'opacity-50',
@@ -231,16 +252,16 @@ function pendingText(p: Pending) {
 }
 
 function SeatGlyph({ state, pending }: { state: SeatState; pending?: Pending }) {
-  if (pending === 'hold' || pending === 'release') return <Loader2 className="size-3 animate-spin sm:size-3.5" aria-hidden />
+  if (pending === 'hold' || pending === 'release') return <Loader2 className="size-4 animate-spin sm:size-3.5" aria-hidden />
   switch (state) {
     case 'mine':
-      return <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} className="size-1.5 rounded-full bg-current sm:size-2" aria-hidden />
+      return <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} className="size-2.5 rounded-full bg-current sm:size-2" aria-hidden />
     case 'sold-mine':
-      return <Check className="size-3 sm:size-3.5" strokeWidth={3} aria-hidden />
+      return <Check className="size-4 sm:size-3.5" strokeWidth={3} aria-hidden />
     case 'sold-other':
-      return <X className="size-2.5 text-muted-foreground/70 sm:size-3" aria-hidden />
+      return <X className="size-3.5 text-muted-foreground/70 sm:size-3" aria-hidden />
     case 'other':
-      return <Lock className="size-2.5 text-black/50 sm:size-3" aria-hidden />
+      return <Lock className="size-3.5 text-black/50 sm:size-3" aria-hidden />
     default:
       return null
   }
@@ -270,7 +291,7 @@ function SeatTooltip({ tip, pending }: { tip: { seat: Seat; x: number; y: number
             <LegendSwatch state={seatState(tip.seat)} small />
             {pending ? pendingText(pending) : STATE_TEXT[seatState(tip.seat)]}
             {seatState(tip.seat) === 'available' && !pending && <span className="text-primary">· click to hold</span>}
-            {seatState(tip.seat) === 'mine' && !pending && <span className="text-primary">· click to release</span>}
+            {seatState(tip.seat) === 'mine' && !pending && <span className="text-primary">· click to release (tap asks first)</span>}
           </div>
           <span className="absolute -bottom-[5px] left-1/2 size-2.5 -translate-x-1/2 rotate-45 border-r border-b bg-popover" />
         </motion.div>
