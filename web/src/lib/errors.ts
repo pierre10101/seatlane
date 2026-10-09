@@ -27,5 +27,9 @@ export function errorId(e: unknown): string {
 }
 
 export function errorCopy(e: unknown): Copy {
-  return COPY[errorId(e)] ?? COPY.internal
+  return copyFor(errorId(e))
+}
+
+export function copyFor(id: string): Copy {
+  return COPY[id] ?? COPY.internal
 }

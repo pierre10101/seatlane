@@ -17,6 +17,7 @@ server says.
 | ![Seat map with my holds and countdowns, light](docs/screenshots/seatmap-light.png) | ![Seat map with my holds and countdowns, dark](docs/screenshots/seatmap-dark.png) |
 | ![F1 toast: the seat is already held, light](docs/screenshots/toast-f1-light.png) | ![F1 toast: the seat is already held, dark](docs/screenshots/toast-f1-dark.png) |
 | ![Booking confirmed](docs/screenshots/success-light.png) | ![A hold that expired](docs/screenshots/expired-light.png) |
+| ![Confirm each seat: 1 of 2 seats confirmed, one hold had expired (F2), light](docs/screenshots/confirm-each-partial-light.png) | ![Confirm each seat: 1 of 2 seats confirmed, one hold had expired (F2), dark](docs/screenshots/confirm-each-partial-dark.png) |
 
 <p align="center">
   <img src="docs/screenshots/mobile-seatmap-light.png" alt="Seat map on a phone, light" width="260">
@@ -72,11 +73,15 @@ scrolls sideways inside its card and has +/- buttons for bigger seats (40,
 48, 56px). Tapping your own held seat on a touch screen asks "Release …?"
 before giving it back; a mouse click or Enter releases at once.
 
-"Confirm all" still confirms seat by seat (one `confirm_hold` per seat), so a
-hold that runs out half-way can leave part of a group booked. An
-all-or-nothing confirm of the seats on the review screen needs a list input
-that bridge-en v0.1.2 does not have; see
-[docs/bridge-en-gaps.md](docs/bridge-en-gaps.md).
+**Each seat is confirmed separately.** "Confirm N seats one by one" sends
+one `confirm_hold` per seat, and each seat is booked or not on its own: if
+one hold has run out, the other seats are still booked. The panel then lists
+every seat's answer (confirmed, or the friendly copy for its failure ID) and
+says plainly when only part of a group went through, e.g. "1 of 2 seats
+confirmed; E7's hold had expired", with "Hold again" on the seat that missed
+out. An atomic, all-or-nothing group confirm is planned with bridge-en
+v0.1.3 (it needs a list input; see
+[docs/bridge-en-gaps.md](docs/bridge-en-gaps.md)).
 
 The seat map is keyboard-navigable (arrow keys, Home/End, Enter), has
 hover/focus tooltips with the seat label and price in rand, and announces

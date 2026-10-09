@@ -1,11 +1,12 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Armchair, Check, Loader2, RotateCcw, ShieldCheck, Ticket, X } from 'lucide-react'
+import { AlertTriangle, Armchair, Check, CircleCheck, CircleX, ListChecks, Loader2, RotateCcw, Ticket, X } from 'lucide-react'
 import type { Seat } from '@/lib/api'
 import { clock, formatMoney, seatLabel } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { CountdownRing } from '@/components/countdown-ring'
 import type { Pending } from '@/components/seat-map'
+import { copyFor } from '@/lib/errors'
 import { cn } from '@/lib/utils'
 
 export type HoldRow = {
@@ -19,18 +20,30 @@ export type HoldRow = {
   total: number
 }
 
+/** What one confirm_hold call answered during "Confirm each seat". */
+export type ConfirmResult = {
+  seatId: number
+  seat?: Seat
+  ok: boolean
+  /** The server's error.id when ok is false (F2, F3, ...). */
+  errorId?: string
+}
+
 type Props = {
   holds: HoldRow[]
   tickets: Seat[]
   pending: ReadonlyMap<number, Pending>
   busy: boolean
   onConfirm: (seatId: number) => void
-  onConfirmAll: () => void
+  onConfirmEach: () => void
   onRelease: (seatId: number) => void
   onHoldAgain: (seatId: number) => void
+  /** The per-seat outcome of the last "Confirm each seat", if any. */
+  results: ConfirmResult[] | null
+  onDismissResults: () => void
 }
 
-export function CheckoutPanel({ holds, tickets, pending, busy, onConfirm, onConfirmAll, onRelease, onHoldAgain }: Props) {
+export function CheckoutPanel({ holds, tickets, pending, busy, onConfirm, onConfirmEach, onRelease, onHoldAgain, results, onDismissResults }: Props) {
   const live = holds.filter((h) => h.active)
   const total = live.reduce((sum, h) => sum + (h.seat?.price.cents ?? 0), 0)
   const currency = live[0]?.seat?.price.currency ?? 'ZAR'
@@ -72,16 +85,22 @@ export function CheckoutPanel({ holds, tickets, pending, busy, onConfirm, onConf
         )}
       </div>
 
+      {results && results.length > 0 && <ConfirmResults results={results} pending={pending} onHoldAgain={onHoldAgain} onDismiss={onDismissResults} />}
+
       {live.length > 0 && (
         <footer className="space-y-3 border-t bg-muted/30 px-5 py-4">
           <div className="flex items-baseline justify-between">
-            <span className="text-sm text-muted-foreground">{live.length} {live.length === 1 ? 'seat' : 'seats'}</span>
+            <span className="text-sm text-muted-foreground">{live.length} {live.length === 1 ? 'seat' : 'seats'} on hold</span>
             <span className="text-lg font-semibold tabular">{formatMoney({ cents: total, currency })}</span>
           </div>
-          <Button size="lg" className="h-11 w-full text-sm shadow-lg shadow-primary/25" disabled={busy} onClick={onConfirmAll} data-testid="confirm-all">
-            {busy ? <Loader2 className="animate-spin" /> : <ShieldCheck />} Confirm {live.length === 1 ? 'seat' : `all ${live.length} seats`}
+          <Button size="lg" className="h-11 w-full text-sm shadow-lg shadow-primary/25" disabled={busy} onClick={onConfirmEach} data-testid="confirm-each">
+            {busy ? <Loader2 className="animate-spin" /> : <ListChecks />} {holds.length === 1 ? 'Confirm seat' : `Confirm ${holds.length} seats one by one`}
           </Button>
-          <p className="text-center text-[11px] text-muted-foreground">Nobody else can take these seats until your timer ends.</p>
+          {holds.length > 1 && (
+            <p className="text-center text-[11px] text-muted-foreground" data-testid="confirm-each-note">
+              Each seat is booked on its own. If a hold runs out first, that seat is not booked; the others still are.
+            </p>
+          )}
         </footer>
       )}
 
@@ -143,6 +162,77 @@ function HoldItem({ h, pending, onConfirm, onRelease, onHoldAgain }: { h: HoldRo
           {pending === 'release' ? <Loader2 className="animate-spin" /> : <X />}
         </Button>
       </div>
+    </div>
+  )
+}
+
+/** "2 of 3 seats confirmed; A17's hold had expired" */
+function confirmSummary(results: ConfirmResult[]): string {
+  const n = results.length
+  const failed = results.filter((r) => !r.ok)
+  const done = n - failed.length
+  if (failed.length === 0) return n === 1 ? 'Your seat is confirmed' : `All ${n} seats confirmed`
+  const head = `${done} of ${n} ${n === 1 ? 'seat' : 'seats'} confirmed`
+  const why = failed.map((r) => {
+    const label = r.seat ? seatLabel(r.seat) : `Seat ${r.seatId}`
+    if (r.errorId === 'F2') return `${label}'s hold had expired`
+    return `${label} was not booked (${copyFor(r.errorId ?? 'internal').title.toLowerCase()})`
+  })
+  return `${head}; ${why.join('; ')}`
+}
+
+/** F2 (hold ran out) and F3 (no hold) can be fixed by holding the seat again. */
+const holdAgainFixes = new Set(['F2', 'F3'])
+
+function ConfirmResults({ results, pending, onHoldAgain, onDismiss }: { results: ConfirmResult[]; pending: ReadonlyMap<number, Pending>; onHoldAgain: (id: number) => void; onDismiss: () => void }) {
+  const failed = results.filter((r) => !r.ok).length
+  const tone = failed === 0 ? 'ok' : failed === results.length ? 'error' : 'partial'
+  return (
+    <div
+      className={cn(
+        'mx-3 mb-3 rounded-xl border p-3',
+        tone === 'ok' && 'border-emerald-500/40 bg-emerald-500/10',
+        tone === 'partial' && 'border-amber-500/50 bg-amber-500/10',
+        tone === 'error' && 'border-destructive/40 bg-destructive/10',
+      )}
+      role="status"
+      data-testid="confirm-results"
+      data-outcome={tone}
+    >
+      <div className="flex items-start gap-2">
+        {tone === 'ok' ? (
+          <CircleCheck className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
+        ) : (
+          <AlertTriangle className={cn('mt-0.5 size-4 shrink-0', tone === 'partial' ? 'text-amber-600 dark:text-amber-400' : 'text-destructive')} aria-hidden />
+        )}
+        <p className="flex-1 text-sm font-semibold" data-testid="confirm-summary">{confirmSummary(results)}</p>
+        <Button size="icon-sm" variant="ghost" className="-mt-1 -mr-1" onClick={onDismiss} aria-label="Dismiss these results" data-testid="confirm-results-dismiss">
+          <X />
+        </Button>
+      </div>
+      <ul className="mt-2 flex flex-col gap-1.5" aria-label="Result for each seat">
+        {results.map((r) => {
+          const label = r.seat ? `${r.seat.section} ${seatLabel(r.seat)}` : `Seat ${r.seatId}`
+          const copy = r.ok ? null : copyFor(r.errorId ?? 'internal')
+          const p = pending.get(r.seatId)
+          return (
+            <li key={r.seatId} className="flex items-start gap-2 rounded-lg bg-background/70 px-2.5 py-2 text-xs" data-testid="confirm-result" data-ok={r.ok} data-error-id={r.errorId ?? ''}>
+              {r.ok ? <CircleCheck className="mt-px size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden /> : <CircleX className="mt-px size-3.5 shrink-0 text-destructive" aria-hidden />}
+              <div className="min-w-0 flex-1">
+                <div className="font-medium">
+                  {label} <span className={r.ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-destructive'}>{r.ok ? 'confirmed' : `not booked: ${copy!.title}`}</span>
+                </div>
+                {copy && <div className="mt-0.5 text-muted-foreground">{copy.description}</div>}
+              </div>
+              {!r.ok && holdAgainFixes.has(r.errorId ?? '') && (
+                <Button size="xs" variant="outline" className="shrink-0" onClick={() => onHoldAgain(r.seatId)} disabled={!!p} aria-label={`Hold ${label} again`} data-testid="result-hold-again">
+                  {p === 'hold' ? <Loader2 className="animate-spin" /> : <RotateCcw />} Hold again
+                </Button>
+              )}
+            </li>
+          )
+        })}
+      </ul>
     </div>
   )
 }
