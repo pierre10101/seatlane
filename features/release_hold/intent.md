@@ -6,8 +6,7 @@ letting the hold run out.
 
 ## Who
 The visitor whose session holds the seat. The session is the `session` input,
-which the bridge-en runtime sets from the session cookie `bridge_session` (0
-without a valid cookie); the caller never sends it.
+which the bridge-en runtime sets from the session cookie `bridge_session` (the empty text without a valid cookie); the caller never sends it.
 
 ## Inputs
 - `seat_id` — the seat to release.
@@ -27,7 +26,7 @@ way). It must change exactly one row.
 - **F5** — the seat is already confirmed (sold to this session): a sale is not released.
 - **F6** — the seat is sold to someone else.
 - **F7** — the seat does not exist.
-- **F8** — the session is missing (zero or negative).
+- **F8** — the session is missing (the empty text: no valid cookie).
 - **F9** — this session has no hold on the seat (nobody holds it, or someone
   else does).
 

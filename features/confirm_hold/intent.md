@@ -7,7 +7,7 @@ then sold to them and nobody else can hold it.
 ## Who
 The visitor whose anonymous session holds the seat. The session is the
 `session` input, which the bridge-en runtime sets from the session cookie
-`bridge_session` (0 without a valid cookie); the caller never sends it.
+`bridge_session` (the empty text without a valid cookie); the caller never sends it.
 
 ## Inputs
 - `seat_id` — the seat to confirm.
@@ -33,7 +33,7 @@ expired: confirming at that second is F2.
 - **F5** — double confirm: the seat is already sold to this session.
 - **F6** — the seat is already sold to someone else.
 - **F7** — the seat does not exist.
-- **F8** — the session is missing (zero or negative).
+- **F8** — the session is missing (the empty text: no valid cookie).
 
 Every failure changes nothing.
 

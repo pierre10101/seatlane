@@ -27,10 +27,10 @@ SELECT held_by, held_at, expires_at, sold_to FROM seats WHERE id = ?
 `
 
 type SeatHoldRow struct {
-	HeldBy    int64
+	HeldBy    string
 	HeldAt    int64
 	ExpiresAt int64
-	SoldTo    int64
+	SoldTo    string
 }
 
 func (q *Queries) SeatHold(ctx context.Context, id int64) (SeatHoldRow, error) {

@@ -17,7 +17,7 @@ import (
 
 // Over HTTP the server sets now (httpx.ClockRule) and session (the cookie
 // bridge_session, httpx.SessionRule); the caller can set neither, in the body
-// or the query string. Without a valid cookie the session is 0: F8. Errors
+// or the query string. Without a valid cookie the session is the empty text: F8. Errors
 // carry the F-ID in error.id.
 func TestF1_HTTPHoldUsesServerTimeAndCookieSession(t *testing.T) {
 	conn := testkit.Open(t, 3)
@@ -42,14 +42,14 @@ func TestF1_HTTPHoldUsesServerTimeAndCookieSession(t *testing.T) {
 		{"/api/holds", `{"seat_id": 1, "now": 1}`},
 		{"/api/holds?now=1", `{"seat_id": 1}`},
 	} {
-		if rec := post("1001", r.target, r.body); rec.Code != http.StatusBadRequest {
+		if rec := post(testkit.Alice, r.target, r.body); rec.Code != http.StatusBadRequest {
 			t.Fatalf("caller-sent %s %s: %d %s", r.target, r.body, rec.Code, rec.Body)
 		}
 	}
-	if r := testkit.Seat(t, conn, 1); r.HeldBy != 0 {
+	if r := testkit.Seat(t, conn, 1); r.HeldBy != "" {
 		t.Fatalf("a refused request held the seat: %+v", r)
 	}
-	for _, cookie := range []string{"", "0", "abc"} {
+	for _, cookie := range []string{"", "abc!", strings.Repeat("x", 129)} {
 		rec := post(cookie, "/api/holds", `{"seat_id": 1}`)
 		var body httpx.ErrorBody
 		_ = json.Unmarshal(rec.Body.Bytes(), &body)
@@ -57,14 +57,14 @@ func TestF1_HTTPHoldUsesServerTimeAndCookieSession(t *testing.T) {
 			t.Fatalf("cookie %q: %d %s", cookie, rec.Code, rec.Body)
 		}
 	}
-	rec := post("1001", "/api/holds", `{"seat_id": 1}`)
+	rec := post(testkit.Alice, "/api/holds", `{"seat_id": 1}`)
 	var out hold_seat.Output
 	if rec.Code != http.StatusCreated || json.Unmarshal(rec.Body.Bytes(), &out) != nil ||
 		out != (hold_seat.Output{SeatID: 1, HeldAt: t0, ExpiresAt: t0 + 600, Now: t0}) {
 		t.Fatalf("hold: %d %s", rec.Code, rec.Body)
 	}
 	// Another visitor's session: F1 with its id.
-	rec = post("2002", "/api/holds", `{"seat_id": 1}`)
+	rec = post(testkit.Bob, "/api/holds", `{"seat_id": 1}`)
 	var body httpx.ErrorBody
 	_ = json.Unmarshal(rec.Body.Bytes(), &body)
 	if rec.Code != hold_seat.F1.Status || body.Error.ID != hold_seat.F1.ID {

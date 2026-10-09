@@ -3,4 +3,4 @@
 -- name: ConfirmSeat :execrows
 UPDATE seats
 SET sold_to = sqlc.arg(session), sold_at = sqlc.arg(now)
-WHERE id = sqlc.arg(seat_id) AND held_by = sqlc.arg(session) AND sold_to = 0 AND expires_at > sqlc.arg(now);
+WHERE id = sqlc.arg(seat_id) AND held_by = sqlc.arg(session) AND sold_to = '' AND expires_at > sqlc.arg(now);

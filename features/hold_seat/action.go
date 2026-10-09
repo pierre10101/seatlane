@@ -16,9 +16,9 @@ const Route = "POST /api/holds"
 
 // Input: the seat; session and now are set by the server.
 type Input struct {
-	SeatID  int64 `json:"seat_id"`
-	Session int64 `json:"session" server:"session"`
-	Now     int64 `json:"now" clock:"now"`
+	SeatID  int64  `json:"seat_id"`
+	Session string `json:"session" server:"session"`
+	Now     int64  `json:"now" clock:"now"`
 }
 
 // Output: the hold that was taken, and the server's clock for the countdown.
@@ -48,7 +48,7 @@ func New(q *db.Queries) *Action { return &Action{q: q} }
 // Handle claims the seat with one conditional UPDATE, then explains a claim
 // that changed nothing with reads made after it.
 func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
-	if in.Session <= 0 {
+	if in.Session == "" {
 		return Output{}, F8
 	}
 
@@ -69,7 +69,7 @@ func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	if claimed == 0 && seat.SoldTo != 0 {
+	if claimed == 0 && seat.SoldTo != "" {
 		return Output{}, F6
 	}
 	if claimed != 1 {

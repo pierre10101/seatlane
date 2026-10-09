@@ -24,7 +24,7 @@ func newAction(t *testing.T) (*release_hold.Action, *sql.DB) {
 	return release_hold.New(db.New(txn.DB(conn))), conn
 }
 
-func release(a *release_hold.Action, seat, session, now int64) (release_hold.Output, error) {
+func release(a *release_hold.Action, seat int64, session string, now int64) (release_hold.Output, error) {
 	in := release_hold.Input{SeatID: seat, Session: session, Now: now}
 	return txn.Run(context.Background(), func(ctx context.Context) (release_hold.Output, error) { return a.Handle(ctx, in) })
 }
@@ -67,7 +67,7 @@ func TestF7_NoSuchSeat(t *testing.T) {
 
 func TestF8_SessionRequired(t *testing.T) {
 	a, _ := newAction(t)
-	if _, err := release(a, 1, 0, t0); !errors.Is(err, release_hold.F8) {
+	if _, err := release(a, 1, "", t0); !errors.Is(err, release_hold.F8) {
 		t.Fatalf("want F8, got %v", err)
 	}
 }

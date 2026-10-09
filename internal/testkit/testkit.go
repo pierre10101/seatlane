@@ -15,10 +15,11 @@ import (
 // T0 is any time: checks pass the current time in (T1).
 const T0 int64 = 1_800_000_000
 
-// Sessions used across checks.
+// Sessions used across checks: text ids like the ones session.Mint issues
+// (the bridge_session cookie). The empty text is no session (F8).
 const (
-	Alice int64 = 1001
-	Bob   int64 = 2002
+	Alice = "alice7qkz2m4xw3vb6r5nd0hjy"
+	Bob   = "bob8tcl1pf6es9ga2wu4ki3oxq"
 )
 
 // Open returns a fresh file-backed database (in t.TempDir) with one event
@@ -47,8 +48,13 @@ func Exec(t *testing.T, conn *sql.DB, query string, args ...any) {
 	}
 }
 
-// Row is a seat's stored state.
-type Row struct{ HeldBy, HeldAt, ExpiresAt, SoldTo, SoldAt int64 }
+// Row is a seat's stored state. HeldBy and SoldTo are ” for nobody.
+type Row struct {
+	HeldBy            string
+	HeldAt, ExpiresAt int64
+	SoldTo            string
+	SoldAt            int64
+}
 
 // Seat reads a seat's stored state.
 func Seat(t *testing.T, conn *sql.DB, id int64) Row {

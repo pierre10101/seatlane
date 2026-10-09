@@ -24,9 +24,9 @@ type Seat struct {
 	RowLabel    string
 	SeatNumber  int64
 	PriceCents  int64
-	HeldBy      int64
+	HeldBy      string
 	HeldAt      int64
 	ExpiresAt   int64
-	SoldTo      int64
+	SoldTo      string
 	SoldAt      int64
 }

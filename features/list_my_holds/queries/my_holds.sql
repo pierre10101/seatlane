@@ -4,6 +4,6 @@
 -- name: ListMyHolds :many
 SELECT id, held_at, expires_at
 FROM seats
-WHERE event_id = sqlc.arg(event_id) AND held_by = sqlc.arg(session) AND sold_to = 0 AND id < sqlc.arg(after)
+WHERE event_id = sqlc.arg(event_id) AND held_by = sqlc.arg(session) AND sold_to = '' AND id < sqlc.arg(after)
 ORDER BY id DESC
 LIMIT sqlc.arg(limit);

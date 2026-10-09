@@ -18,11 +18,11 @@ const Route = "GET /api/events/{id}/seats"
 
 // Input: path and query; session and now are set by the server.
 type Input struct {
-	EventID int64 `json:"event_id" path:"id"`
-	After   int64 `json:"after" query:"after"`
-	Limit   int64 `json:"limit" query:"limit"`
-	Session int64 `json:"session" server:"session"`
-	Now     int64 `json:"now" clock:"now"`
+	EventID int64  `json:"event_id" path:"id"`
+	After   int64  `json:"after" query:"after"`
+	Limit   int64  `json:"limit" query:"limit"`
+	Session string `json:"session" server:"session"`
+	Now     int64  `json:"now" clock:"now"`
 }
 
 // Output: the event, one page of seats with their state for this session,
@@ -52,7 +52,7 @@ func New(q *db.Queries) *Action { return &Action{q: q} }
 
 // Handle runs in one read-only transaction (httpx.Bind on a GET).
 func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
-	if in.Session <= 0 {
+	if in.Session == "" {
 		return Output{}, F8
 	}
 	if !page.IsPageLimit(in.Limit) {

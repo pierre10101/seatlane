@@ -13,7 +13,7 @@ The request has no JSON body. It takes these values from the path and the query 
 Path values are required. A query value may be left out: `limit` is then the default page size and `after` starts the list at the newest row. A missing path value, or a value that is not a whole number, is answered with HTTP 400 below and the action does not run.
 
 The action also takes these 2 values, which the caller does not send:
-- `session`: set by the server from the session cookie `bridge_session`: its value when that is a whole number from 1 up, written in digits only, or 0 when the request has no such cookie, has it more than once, or its value is anything else; the caller does not send it, and a request that does is answered with HTTP 400 below.
+- `session`: set by the server from the session cookie `bridge_session`: its value when that is 1 to 128 letters, digits, '-', '_' or '.', or the empty text when the request has no such cookie, has it more than once, or its value is anything else; the caller does not send it, and a request that does is answered with HTTP 400 below.
 - `now`: set by the server to the current time when the request arrives, in whole seconds since 1970-01-01 UTC; the caller does not send it, and a request that does is answered with HTTP 400 below.
 
 Every answer is JSON. An error answer is `{"error": {"id": <id>, "message": <message>}}`.
@@ -39,10 +39,10 @@ The action does exactly this, in this order. A step that stops the action ends i
 
 Steps 4 to 8 run in one read-only database transaction. It begins with the query in step 4 and takes no write lock; every query in it reads the same snapshot of the database, and a write inside it fails. It ends in step 9, before the answer is sent.
 
-1. If the session from the cookie is at most 0, stop with F8: HTTP 401 Unauthorized "session is required".
+1. If the session from the cookie equals the text "", stop with F8: HTTP 401 Unauthorized "session is required".
 2. If the request's `limit` is not between 1 and 100 (both included), stop with F11: HTTP 400 Bad Request "page limit is out of range".
 3. If the request's `after` is at most 0, stop with F12: HTTP 400 Bad Request "page cursor must be greater than zero".
-4. Read: list the seats whose `event_id` is the request's `event_id` and `held_by` is the session from the cookie and `sold_to` is 0 and whose `id` is less than the request's `after`, highest `id` first, at most the request's `limit` of them (query `ListMyHolds` in queries/my_holds.sql). Call them the listed seats; there may be none. If the query fails, stop with HTTP 500 Internal Server Error.
+4. Read: list the seats whose `event_id` is the request's `event_id` and `held_by` is the session from the cookie and `sold_to` is the text "" and whose `id` is less than the request's `after`, highest `id` first, at most the request's `limit` of them (query `ListMyHolds` in queries/my_holds.sql). Call them the listed seats; there may be none. If the query fails, stop with HTTP 500 Internal Server Error.
 5. For each of the listed seats, build a session hold:
    - `seat_id` = the listed seat's `id`
    - `held_at` = the listed seat's `held_at`

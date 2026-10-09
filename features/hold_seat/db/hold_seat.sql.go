@@ -12,11 +12,11 @@ import (
 const holdSeat = `-- name: HoldSeat :execrows
 UPDATE seats
 SET held_by = ?1, held_at = ?2, expires_at = ?2 + 600
-WHERE id = ?3 AND sold_to = 0 AND (held_by = 0 OR expires_at <= ?2)
+WHERE id = ?3 AND sold_to = '' AND (held_by = '' OR expires_at <= ?2)
 `
 
 type HoldSeatParams struct {
-	Session int64
+	Session string
 	Now     int64
 	SeatID  int64
 }

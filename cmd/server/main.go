@@ -52,16 +52,18 @@ func main() {
 	log.Fatal(http.ListenAndServe(*addr, h))
 }
 
-// Handler mounts the API and the web app, and gives every visitor a session
-// cookie (session.Issue). The actions read the session from that cookie
-// themselves (httpx.Bind, `server:"session"`); nothing is injected.
+// Handler mounts the API and the web app. Every response that serves the
+// HTML sets the session cookie (web.Handler, session.Page); an API call
+// without a valid cookie gets one too (session.Issue), as a fallback. The
+// actions read the session from that cookie themselves (httpx.Bind,
+// `server:"session"`); nothing is injected.
 func Handler(api http.Handler, dist string) http.Handler {
 	root := http.NewServeMux()
-	root.Handle("/api/", api)
+	root.Handle("/api/", session.Issue(api))
 	if st, err := os.Stat(dist); err == nil && st.IsDir() {
 		root.Handle("/", web.Handler(dist))
 	} else {
 		log.Printf("no web app at %s; serving the API only (run make build)", dist)
 	}
-	return session.Issue(root)
+	return root
 }

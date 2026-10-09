@@ -2,5 +2,5 @@
 -- the seat and it is not sold (Q6 + S10).
 -- name: ReleaseSeat :execrows
 UPDATE seats
-SET held_by = 0, held_at = 0, expires_at = 0
-WHERE id = sqlc.arg(seat_id) AND held_by = sqlc.arg(session) AND sold_to = 0;
+SET held_by = '', held_at = 0, expires_at = 0
+WHERE id = sqlc.arg(seat_id) AND held_by = sqlc.arg(session) AND sold_to = '';

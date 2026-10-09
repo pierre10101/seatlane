@@ -11,7 +11,7 @@ read lists only the seats their session holds, each with its `expires_at`.
 - `after`, `limit` (query) — keyset paging over seat ids, highest first
   (`limit` 1..100, default 20; `after` defaults to the start).
 - `session` — the visitor's session id, set by the server from the session
-  cookie `bridge_session` (0 without a valid cookie); the caller never sends it.
+  cookie `bridge_session` (the empty text without a valid cookie); the caller never sends it.
 - `now` — the current time, set by the server.
 
 ## Outputs
@@ -25,6 +25,6 @@ read lists only the seats their session holds, each with its `expires_at`.
 An event that does not exist simply has no holds: the list is empty.
 
 ## Failure cases
-- **F8** — the session is missing (zero or negative).
+- **F8** — the session is missing (the empty text: no valid cookie).
 - **F11** — `limit` is not between 1 and 100.
 - **F12** — `after` is zero or negative.

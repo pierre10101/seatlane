@@ -38,27 +38,27 @@ func IsActiveHold(expiresAt, now int64) bool {
 }
 
 // IsAvailable: not sold, and nobody holds it or the hold has expired.
-func IsAvailable(heldBy, expiresAt, soldTo, now int64) bool {
-	return soldTo == 0 && (heldBy == 0 || expiresAt <= now)
+func IsAvailable(heldBy string, expiresAt int64, soldTo string, now int64) bool {
+	return soldTo == "" && (heldBy == "" || expiresAt <= now)
 }
 
 // IsHeldBy: not sold, held by session, and the hold has not expired.
-// Sessions are positive (F8), so held_by = session means somebody holds it.
-func IsHeldBy(heldBy, expiresAt, soldTo, session, now int64) bool {
-	return soldTo == 0 && heldBy == session && expiresAt > now
+// Sessions are never empty (F8), so held_by = session means somebody holds it.
+func IsHeldBy(heldBy string, expiresAt int64, soldTo, session string, now int64) bool {
+	return soldTo == "" && heldBy == session && expiresAt > now
 }
 
 // IsHeldByOther: not sold, held by another session, and the hold has not expired.
-func IsHeldByOther(heldBy, expiresAt, soldTo, session, now int64) bool {
-	return soldTo == 0 && heldBy != 0 && heldBy != session && expiresAt > now
+func IsHeldByOther(heldBy string, expiresAt int64, soldTo, session string, now int64) bool {
+	return soldTo == "" && heldBy != "" && heldBy != session && expiresAt > now
 }
 
-// IsSoldTo: sold to session (sessions are positive, so it is sold).
-func IsSoldTo(soldTo, session int64) bool {
+// IsSoldTo: sold to session (sessions are never empty, so it is sold).
+func IsSoldTo(soldTo, session string) bool {
 	return soldTo == session
 }
 
 // IsSoldToOther: sold to another session.
-func IsSoldToOther(soldTo, session int64) bool {
-	return soldTo != 0 && soldTo != session
+func IsSoldToOther(soldTo, session string) bool {
+	return soldTo != "" && soldTo != session
 }

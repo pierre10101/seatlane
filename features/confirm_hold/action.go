@@ -16,9 +16,9 @@ const Route = "POST /api/holds/confirm"
 
 // Input: the seat; session and now are set by the server.
 type Input struct {
-	SeatID  int64 `json:"seat_id"`
-	Session int64 `json:"session" server:"session"`
-	Now     int64 `json:"now" clock:"now"`
+	SeatID  int64  `json:"seat_id"`
+	Session string `json:"session" server:"session"`
+	Now     int64  `json:"now" clock:"now"`
 }
 
 // Output: the sale, and the server's clock.
@@ -50,7 +50,7 @@ func New(q *db.Queries) *Action { return &Action{q: q} }
 // Handle sells the seat with one conditional UPDATE, then explains a claim
 // that changed nothing with reads made after it.
 func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
-	if in.Session <= 0 {
+	if in.Session == "" {
 		return Output{}, F8
 	}
 
@@ -74,10 +74,10 @@ func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
 	if confirmed == 0 && seat.SoldTo == in.Session {
 		return Output{}, F5
 	}
-	if confirmed == 0 && seat.SoldTo != 0 {
+	if confirmed == 0 && seat.SoldTo != "" {
 		return Output{}, F6
 	}
-	if confirmed == 0 && seat.HeldBy == 0 {
+	if confirmed == 0 && seat.HeldBy == "" {
 		return Output{}, F3
 	}
 	if confirmed == 0 && seat.HeldBy == in.Session {

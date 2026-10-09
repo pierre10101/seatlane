@@ -16,9 +16,9 @@ const Route = "POST /api/holds/release"
 
 // Input: the seat; session and now are set by the server.
 type Input struct {
-	SeatID  int64 `json:"seat_id"`
-	Session int64 `json:"session" server:"session"`
-	Now     int64 `json:"now" clock:"now"`
+	SeatID  int64  `json:"seat_id"`
+	Session string `json:"session" server:"session"`
+	Now     int64  `json:"now" clock:"now"`
 }
 
 // Output: the released seat, and the server's clock.
@@ -48,7 +48,7 @@ func New(q *db.Queries) *Action { return &Action{q: q} }
 // Handle clears the hold with one conditional UPDATE, then explains a claim
 // that changed nothing with reads made after it.
 func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
-	if in.Session <= 0 {
+	if in.Session == "" {
 		return Output{}, F8
 	}
 
@@ -72,7 +72,7 @@ func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
 	if released == 0 && seat.SoldTo == in.Session {
 		return Output{}, F5
 	}
-	if released == 0 && seat.SoldTo != 0 {
+	if released == 0 && seat.SoldTo != "" {
 		return Output{}, F6
 	}
 	if released != 1 {
@@ -80,6 +80,6 @@ func (a *Action) Handle(ctx context.Context, in Input) (Output, error) {
 	}
 
 	out := Output{SeatID: in.SeatID, ReleasedAt: in.Now, Now: in.Now}
-	assert.Post(seat.HeldBy == 0, "nobody holds the seat any more")
+	assert.Post(seat.HeldBy == "", "nobody holds the seat any more")
 	return out, nil
 }

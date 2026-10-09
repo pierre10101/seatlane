@@ -11,13 +11,13 @@ import (
 
 const releaseSeat = `-- name: ReleaseSeat :execrows
 UPDATE seats
-SET held_by = 0, held_at = 0, expires_at = 0
-WHERE id = ?1 AND held_by = ?2 AND sold_to = 0
+SET held_by = '', held_at = 0, expires_at = 0
+WHERE id = ?1 AND held_by = ?2 AND sold_to = ''
 `
 
 type ReleaseSeatParams struct {
 	SeatID  int64
-	Session int64
+	Session string
 }
 
 // One statement clears the hold only if, at that moment, this session holds

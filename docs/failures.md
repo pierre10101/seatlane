@@ -25,10 +25,15 @@ the current time and expired from `expires_at` on (a hold taken exactly 600
 seconds ago has expired; one taken 599 seconds ago has not).
 
 The session is the cookie `bridge_session`, which the bridge-en runtime reads
-into each action's `session` input (`server:"session"`); without a valid
-cookie the session is 0 and the action answers F8. The server issues the
-cookie (`internal/session.Issue`); a request that sends `session` itself, in
-the body or the query string, is answered 400 `bad_request`.
+into each action's `session` input (`server:"session"`, a string); without a
+valid cookie the session is the empty text and the action answers F8. A
+session is 128 random bits from crypto/rand, written as 26 base32
+characters; `held_by` and `sold_to` store it as TEXT, with `''` meaning
+nobody. The server issues the cookie on every response that serves the web
+app's HTML (`internal/session.Page`) and, as a fallback, on any API call
+without a valid one (`internal/session.Issue`): HttpOnly, SameSite=Lax,
+Path=/, and Secure over TLS. A request that sends `session` itself, in the
+body or the query string, is answered 400 `bad_request`.
 
 Error answers are `{"error": {"id": "F2", "message": "hold has expired"}}`
 (the bridge-en runtime's `httpx.ErrorBody`): `error.id` is the stable field.

@@ -6,6 +6,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -24,7 +26,7 @@ func newAction(t *testing.T) (*hold_seat.Action, *sql.DB) {
 }
 
 // hold calls the action the way httpx.Bind does: in one transaction.
-func hold(a *hold_seat.Action, seat, session, now int64) (hold_seat.Output, error) {
+func hold(a *hold_seat.Action, seat int64, session string, now int64) (hold_seat.Output, error) {
 	in := hold_seat.Input{SeatID: seat, Session: session, Now: now}
 	return txn.Run(context.Background(), func(ctx context.Context) (hold_seat.Output, error) { return a.Handle(ctx, in) })
 }
@@ -48,11 +50,14 @@ func TestF1_SeatAlreadyHeld(t *testing.T) {
 	if _, err := hold(a, 1, testkit.Alice, t0); err != nil {
 		t.Fatal(err)
 	}
-	for _, try := range []struct{ session, later int64 }{
+	for _, try := range []struct {
+		session string
+		later   int64
+	}{
 		{testkit.Bob, 0}, {testkit.Bob, 1}, {testkit.Bob, 599}, {testkit.Alice, 30},
 	} {
 		if _, err := hold(a, 1, try.session, t0+try.later); !errors.Is(err, hold_seat.F1) {
-			t.Fatalf("session %d, %d s later: want F1, got %v", try.session, try.later, err)
+			t.Fatalf("session %s, %d s later: want F1, got %v", try.session, try.later, err)
 		}
 		if r := testkit.Seat(t, conn, 1); r.HeldBy != testkit.Alice || r.HeldAt != t0 || r.ExpiresAt != t0+600 {
 			t.Fatalf("%d s later: hold changed to %+v", try.later, r)
@@ -77,7 +82,7 @@ func TestF1_ConcurrentHoldsExactlyOneWins(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := hold(a, 2, 5000+s, t0)
+			_, err := hold(a, 2, fmt.Sprintf("visitor-%02d", s), t0)
 			mu.Lock()
 			defer mu.Unlock()
 			switch {
@@ -94,7 +99,7 @@ func TestF1_ConcurrentHoldsExactlyOneWins(t *testing.T) {
 	if wins != 1 || f1 != 23 {
 		t.Fatalf("wins %d, F1 %d", wins, f1)
 	}
-	if r := testkit.Seat(t, conn, 2); r.HeldBy <= 5000 {
+	if r := testkit.Seat(t, conn, 2); !strings.HasPrefix(r.HeldBy, "visitor-") {
 		t.Fatalf("stored %+v", r)
 	}
 }
@@ -104,9 +109,9 @@ func TestF6_SeatAlreadySold(t *testing.T) {
 	testkit.Exec(t, conn, `UPDATE seats SET held_by = ?, held_at = ?, expires_at = ?, sold_to = ?, sold_at = ? WHERE id = 1`,
 		testkit.Bob, t0-900, t0-300, testkit.Bob, t0-400)
 	before := testkit.Seat(t, conn, 1)
-	for _, s := range []int64{testkit.Alice, testkit.Bob} {
+	for _, s := range []string{testkit.Alice, testkit.Bob} {
 		if _, err := hold(a, 1, s, t0); !errors.Is(err, hold_seat.F6) {
-			t.Fatalf("session %d: want F6, got %v", s, err)
+			t.Fatalf("session %s: want F6, got %v", s, err)
 		}
 	}
 	if r := testkit.Seat(t, conn, 1); r != before {
@@ -123,9 +128,9 @@ func TestF7_NoSuchSeat(t *testing.T) {
 
 func TestF8_SessionRequired(t *testing.T) {
 	a, conn := newAction(t)
-	for _, s := range []int64{0, -1} {
+	for _, s := range []string{""} {
 		if _, err := hold(a, 1, s, t0); !errors.Is(err, hold_seat.F8) {
-			t.Fatalf("session %d: want F8, got %v", s, err)
+			t.Fatalf("session %q: want F8, got %v", s, err)
 		}
 	}
 	if r := testkit.Seat(t, conn, 1); r != (testkit.Row{}) {

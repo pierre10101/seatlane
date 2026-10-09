@@ -12,14 +12,14 @@ import (
 const listMyHolds = `-- name: ListMyHolds :many
 SELECT id, held_at, expires_at
 FROM seats
-WHERE event_id = ?1 AND held_by = ?2 AND sold_to = 0 AND id < ?3
+WHERE event_id = ?1 AND held_by = ?2 AND sold_to = '' AND id < ?3
 ORDER BY id DESC
 LIMIT ?4
 `
 
 type ListMyHoldsParams struct {
 	EventID int64
-	Session int64
+	Session string
 	After   int64
 	Limit   int64
 }

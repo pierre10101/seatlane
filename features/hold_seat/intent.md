@@ -7,8 +7,7 @@ confirmed in time frees the seat for the next person.
 
 ## Who
 Any visitor. The holder is the anonymous session: the `session` input, which
-the bridge-en runtime sets from the session cookie `bridge_session` (0 without
-a valid cookie); the caller never sends it.
+the bridge-en runtime sets from the session cookie `bridge_session` (the empty text without a valid cookie); the caller never sends it.
 
 ## Inputs
 - `seat_id` — the seat to hold.
@@ -32,7 +31,7 @@ the seat; one that expires one second later still does.
   and the hold has not expired. Nothing changes.
 - **F6** — the seat is already sold. Nothing changes.
 - **F7** — the seat does not exist. Nothing changes.
-- **F8** — the session is missing (zero or negative). Nothing changes.
+- **F8** — the session is missing (the empty text: no valid cookie). Nothing changes.
 
 ## Out of scope
 Confirming (confirm_hold) and releasing (release_hold) a hold; payment.

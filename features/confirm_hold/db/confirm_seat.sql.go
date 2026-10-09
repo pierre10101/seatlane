@@ -12,11 +12,11 @@ import (
 const confirmSeat = `-- name: ConfirmSeat :execrows
 UPDATE seats
 SET sold_to = ?1, sold_at = ?2
-WHERE id = ?3 AND held_by = ?1 AND sold_to = 0 AND expires_at > ?2
+WHERE id = ?3 AND held_by = ?1 AND sold_to = '' AND expires_at > ?2
 `
 
 type ConfirmSeatParams struct {
-	Session int64
+	Session string
 	Now     int64
 	SeatID  int64
 }

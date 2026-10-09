@@ -29,7 +29,7 @@ only for some rows. The viewer's own hold times come from List my holds
 A hold counts as active while its `expires_at` is later than now.
 
 ## Failure cases
-- **F8** — the session is missing (zero or negative).
+- **F8** — the session is missing (the empty text: no valid cookie).
 - **F10** — the event does not exist.
 - **F11** — `limit` is not between 1 and 100.
 - **F12** — `after` is zero or negative.

@@ -41,11 +41,11 @@ func run[I, O any](handle func(context.Context, I) (O, error), in I) (O, error) 
 	return txn.Run(context.Background(), func(ctx context.Context) (O, error) { return handle(ctx, in) })
 }
 
-func (w *world) doConfirm(seat, session, now int64) (confirm_hold.Output, error) {
+func (w *world) doConfirm(seat int64, session string, now int64) (confirm_hold.Output, error) {
 	return run(w.confirm.Handle, confirm_hold.Input{SeatID: seat, Session: session, Now: now})
 }
 
-func (w *world) doHold(seat, session, now int64) {
+func (w *world) doHold(seat int64, session string, now int64) {
 	w.t.Helper()
 	if _, err := run(w.hold.Handle, hold_seat.Input{SeatID: seat, Session: session, Now: now}); err != nil {
 		w.t.Fatalf("hold: %v", err)
@@ -158,7 +158,7 @@ func TestF7_NoSuchSeat(t *testing.T) {
 func TestF8_SessionRequired(t *testing.T) {
 	w := newWorld(t)
 	w.expectUnchanged(1, func() {
-		if _, err := w.doConfirm(1, 0, t0); !errors.Is(err, confirm_hold.F8) {
+		if _, err := w.doConfirm(1, "", t0); !errors.Is(err, confirm_hold.F8) {
 			t.Fatalf("want F8, got %v", err)
 		}
 	})
